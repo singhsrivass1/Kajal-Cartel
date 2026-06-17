@@ -10,7 +10,7 @@
     "seed": "tsx src/lib/db/seed.ts"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.12.0",
+    "@google/generative-ai": "^0.24.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
     "framer-motion": "^11.2.10",

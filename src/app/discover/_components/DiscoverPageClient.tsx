@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useCallback, useRef } from 'react';import { motion, AnimatePresence } from 'framer-motion';
 import { MoodBoardWidget } from '@/components/discovery/MoodBoardWidget';
 import { VendorGrid } from '@/components/discovery/VendorGrid';
 import { RosterCard } from '@/components/discovery/RosterCard';
@@ -12,11 +11,11 @@ const FONT_DISPLAY = '"Cormorant Garamond", "Cormorant", Georgia, serif';
 /* ── HEADER ─────────────────────────────────────────────────── */
 function Header({ onScrollToMatcher, onScrollToRoster }: { onScrollToMatcher: () => void; onScrollToRoster: () => void }) {
   const [scrolled, setScrolled] = useState(false);
-  if (typeof window !== 'undefined') {
-    if (!scrolled) {
-      window.addEventListener('scroll', () => setScrolled(window.scrollY > 48), { passive: true, once: false });
-    }
-  }
+  useEffect(() => {
+    const handle = () => setScrolled(window.scrollY > 48);
+    window.addEventListener('scroll', handle, { passive: true });
+    return () => window.removeEventListener('scroll', handle);
+  }, []);
 
   return (
     <header style={{

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useRouter } from 'next/navigation';
 import type { ArtistProfile, ClientService, EstimateResult } from '@/types/artist';
 
 const FONT_DISPLAY = '"Cormorant Garamond", "Cormorant", Georgia, serif';
@@ -113,7 +112,7 @@ function AddOnCard({ service, quantity, onQuantityChange }: { service: ClientSer
 }
 
 /* ── Estimate breakdown ─────────────────────────────────────── */
-function EstimateBreakdown({ estimate, onRequestToBook }: { estimate: EstimateResult, onRequestToBook: () => void }) {
+function EstimateBreakdown({ estimate, onRequestBook }: { estimate: EstimateResult; onRequestBook: () => void }) {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
       <p style={{ fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', color: '#C9A96E', marginBottom: '18px' }}>Estimate</p>
@@ -158,9 +157,8 @@ function EstimateBreakdown({ estimate, onRequestToBook }: { estimate: EstimateRe
         This is an indicative estimate. The final price will be confirmed by the artist before your booking is locked in.
       </p>
 
-      {/* NEW: Wired up the intercept handler here */}
-      <button 
-        onClick={onRequestToBook}
+      <button
+        onClick={onRequestBook}
         style={{ width: '100%', padding: '15px 0', fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', fontWeight: 600, background: '#C9A96E', color: '#080808', border: 'none', cursor: 'pointer', transition: 'background 0.2s' }}
         onMouseEnter={e => (e.currentTarget.style.background = '#B8943F')}
         onMouseLeave={e => (e.currentTarget.style.background = '#C9A96E')}>
@@ -170,16 +168,97 @@ function EstimateBreakdown({ estimate, onRequestToBook }: { estimate: EstimateRe
   );
 }
 
+/* ── BOOKING CONFIRMATION ───────────────────────────────────── */
+function BookingConfirmation({
+  artist,
+  estimate,
+  anchorName,
+  onClose,
+}: {
+  artist: ArtistProfile;
+  estimate: EstimateResult;
+  anchorName: string;
+  onClose: () => void;
+}) {
+  const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
+
+  return (
+    <motion.div
+      key="confirmation"
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
+      style={{ overflow: 'hidden' }}
+    >
+      <div style={{ borderTop: '1px solid #1C1C1C', padding: '24px 20px', background: '#0A0D09' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '20px' }}>
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 18, delay: 0.15 }}
+            style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#2A4A2A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}
+          >
+            <span style={{ color: '#5A8A5A', fontSize: '14px' }}>✓</span>
+          </motion.div>
+          <div>
+            <p style={{ fontFamily: FONT_DISPLAY, fontSize: '1.1rem', color: '#F0EBE0', marginBottom: '4px', fontWeight: 400 }}>
+              Booking request sent
+            </p>
+            <p style={{ fontSize: '11px', color: '#3A3530' }}>
+              Reference <span style={{ fontFamily: '"JetBrains Mono", monospace', color: '#C9A96E' }}>KC-{ref}</span>
+            </p>
+          </div>
+        </div>
+
+        <div style={{ background: '#0C0C0C', border: '1px solid #161412', padding: '14px 16px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '11px', color: '#4A4440' }}>Artist</span>
+              <span style={{ fontFamily: FONT_DISPLAY, fontSize: '13px', color: '#C8B9A8' }}>{artist.name}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '11px', color: '#4A4440' }}>Service</span>
+              <span style={{ fontSize: '12px', color: '#C8B9A8' }}>{anchorName}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '11px', color: '#4A4440' }}>Deposit due on confirmation</span>
+              <span style={{ fontSize: '12px', color: '#F0EBE0' }}>{formatINR(estimate.depositAmount)}</span>
+            </div>
+          </div>
+        </div>
+
+        <p style={{ fontSize: '12px', color: '#5A5450', lineHeight: 1.7, marginBottom: '18px' }}>
+          <span style={{ color: '#C8B9A8' }}>{artist.name}</span> has been notified and typically responds within 24 hours. Check <span style={{ color: '#C9A96E' }}>My Journey</span> for updates.
+        </p>
+
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <a href="/my-journey"
+            style={{ flex: 1, display: 'block', padding: '11px 0', textAlign: 'center', fontSize: '9px', letterSpacing: '0.2em', textTransform: 'uppercase', background: '#C9A96E', color: '#080808', textDecoration: 'none', fontWeight: 600 }}>
+            My Journey
+          </a>
+          <button onClick={onClose}
+            style={{ flex: 1, padding: '11px 0', fontSize: '9px', letterSpacing: '0.2em', textTransform: 'uppercase', background: 'none', border: '1px solid #1C1C1C', color: '#4A4440', cursor: 'pointer' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#F0EBE0')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#4A4440')}>
+            Browse More
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 /* ── BOOKING BUILDER ────────────────────────────────────────── */
 interface BookingBuilderProps { artist: ArtistProfile; services: ClientService[]; }
 
 export function BookingBuilder({ artist, services }: BookingBuilderProps) {
-  const router = useRouter(); // Next.js Router for redirecting
   const [selectedAnchor, setSelectedAnchor] = useState<ClientService | null>(null);
   const [addOnQuantities, setAddOnQuantities] = useState<Record<string, number>>({});
   const [isCalculating, setIsCalculating] = useState(false);
   const [estimate, setEstimate] = useState<EstimateResult | null>(null);
   const [estimateError, setEstimateError] = useState<string | null>(null);
+  const [bookingConfirmed, setBookingConfirmed] = useState(false);
 
   const anchorServices = services.filter(s => s.serviceRole === 'anchor' && s.flags.isActive).sort((a, b) => a.checkoutMeta.displayPriority - b.checkoutMeta.displayPriority);
 
@@ -226,20 +305,6 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
       setIsCalculating(false);
     }
   }, [selectedAnchor, addOnServices, addOnQuantities]);
-
-  // NEW: The intercept logic
-  const handleRequestToBook = () => {
-    const isAuthenticated = localStorage.getItem('kc_user_token');
-    
-    if (!isAuthenticated) {
-      // Send them to the auth page, and append the current artist so they return here after signing in
-      router.push(`/auth?redirect=/artists/${artist.slug}`);
-      return;
-    }
-    
-    // Placeholder for actual checkout flow once logged in
-    alert("Authentication confirmed. Proceeding to secure checkout...");
-  };
 
   return (
     <div style={{ border: '1px solid #1C1C1C', overflow: 'hidden', background: '#0A0A0A' }}>
@@ -304,10 +369,26 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
         {estimate && (
           <motion.div key="estimate" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.45 }} style={{ overflow: 'hidden' }}>
             <div style={{ borderTop: '1px solid #1C1C1C', padding: '20px', background: '#0D0B09' }}>
-              {/* Pass the handler down to the component that renders the button */}
-              <EstimateBreakdown estimate={estimate} onRequestToBook={handleRequestToBook} />
+              <EstimateBreakdown estimate={estimate} onRequestBook={() => setBookingConfirmed(true)} />
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {bookingConfirmed && estimate && selectedAnchor && (
+          <BookingConfirmation
+            key="booking-confirmation"
+            artist={artist}
+            estimate={estimate}
+            anchorName={selectedAnchor.name}
+            onClose={() => {
+              setBookingConfirmed(false);
+              setEstimate(null);
+              setSelectedAnchor(null);
+              setAddOnQuantities({});
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

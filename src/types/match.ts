@@ -54,6 +54,11 @@ export interface MatchResult {
   matchRationale: string;
 }
 
+export interface StyleDNAEntry {
+  label: string;
+  score: number;
+}
+
 export interface ImageProfile {
   styleArchetypes: string[];
   makeupFinishTags: string[];
@@ -66,5 +71,6 @@ export interface ImageProfile {
 export interface MatchResponse {
   matches: MatchResult[];
   imageProfile: ImageProfile;
-  message?: string;
+  styleDNA: StyleDNAEntry[];
+  editorialAnalysis: string;
 }

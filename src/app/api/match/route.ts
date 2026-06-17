@@ -2,414 +2,176 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { dbConnect } from '@/lib/db/connect';
 import Vendor from '@/lib/db/models/Vendor';
-import {
-  STYLE_ARCHETYPES,
-  MAKEUP_FINISH_TAGS,
-  COLOR_PALETTE_TAGS,
-  OCCASION_TAGS,
-  SKIN_TONE_TAGS,
-} from '@/lib/db/enums/taxonomy';
- 
+import type {
+  ClientVendor,
+  MatchResult,
+  ImageProfile,
+  StyleDNAEntry,
+  MatchResponse,
+} from '@/types/match';
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
- 
+
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
-const CANDIDATE_POOL_SIZE = 6;
-const TOP_MATCH_COUNT = 3;
- 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '');
- 
-const IMAGE_ANALYSIS_SYSTEM_INSTRUCTION = `
-You are the Visual Aesthetic Analyst for Kajal Cartel, Delhi's premier bridal beauty marketplace. Your role is to analyse mood board images uploaded by brides and extract precise aesthetic signals that map to our platform's controlled taxonomy.
- 
-Examine the uploaded image for visual signals across five categories. Return ONLY values from the approved taxonomy lists. If a category has no clear visual signal, return an empty array for that category. Do not approximate or invent values. If a tag is not visually confirmed, exclude it.
- 
-APPROVED TAXONOMY:
- 
-styleArchetypes — the dominant aesthetic school of the mood board. Select a maximum of 3:
-${[...STYLE_ARCHETYPES].join(' | ')}
- 
-makeupFinishTags — the skin or makeup finish visible or strongly implied by the imagery. Select a maximum of 4:
-${[...MAKEUP_FINISH_TAGS].join(' | ')}
- 
-colorPaletteAffinity — the dominant colour vocabulary across the image. Select a maximum of 4:
-${[...COLOR_PALETTE_TAGS].join(' | ')}
- 
-occasionSignals — the ceremony or event type this mood board is coded for. Select a maximum of 3:
-${[...OCCASION_TAGS].join(' | ')}
- 
-skinToneSignals — the skin tone emphasis if identifiable in the image. Select a maximum of 2:
-${[...SKIN_TONE_TAGS].join(' | ')}
- 
-For the visualNarrative field: write 2–3 sentences describing the mood board's overall aesthetic intent as a Vogue art director would brief a makeup artist. Be specific about texture, colour register, draping weight, and emotional tone. This narrative will be used to generate AI match rationales for real artists.
-`.trim();
- 
-const VENDOR_RANKING_SYSTEM_INSTRUCTION = `
-You are the Aesthetic Matcher for Kajal Cartel, Delhi's elite bridal beauty marketplace. You will receive a client's mood board aesthetic profile and a shortlist of bridal artists. Your task is to rank the artists by how precisely their artistic vocabulary and documented signature techniques align with the client's visual intent.
- 
-CONFIDENCE SCORE GUIDE — be rigorous, not generous:
-0.90–1.0: The artist's entire body of work could have been sourced directly from this mood board. Complete aesthetic alignment across all primary signals.
-0.70–0.89: Strong alignment across primary aesthetic signals, minor divergence in secondary elements.
-0.50–0.69: Meaningful overlap in some dimensions with notable gaps in others.
-Below 0.50: Fundamental aesthetic misalignment. Do not manufacture a match that does not exist.
- 
-MATCHED TAGS: Return only the specific taxonomy tags from the mood board profile that this artist demonstrably and specifically specialises in. Do not pad this list.
- 
-MATCH RATIONALE: Write in luxury editorial tone — specific, visual, and authoritative. Each rationale must reference a concrete visual element observed in the mood board, connect it to a documented technique or signature from the artist's profile, and be a maximum of 3 sentences. No filler. No generic praise. Treat each rationale as a sentence that would appear in a Vogue India feature.
- 
-NEGATIVE SIGNALS: If an artist's contraIndicators conflict with signals present in the mood board, reduce the confidenceScore proportionally. Reference the conflict with honesty.
- 
-Return all artists in the rankings array, ordered by descending confidenceScore.
-`.trim();
- 
-const IMAGE_ANALYSIS_SCHEMA = {
-  type: 'object',
-  properties: {
-    styleArchetypes: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-    makeupFinishTags: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-    colorPaletteAffinity: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-    occasionSignals: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-    skinToneSignals: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-    visualNarrative: {
-      type: 'string',
-    },
-  },
-  required: [
-    'styleArchetypes',
-    'makeupFinishTags',
-    'colorPaletteAffinity',
-    'occasionSignals',
-    'skinToneSignals',
-    'visualNarrative',
+
+const FALLBACK_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+] as const;
+
+const MASTER_PROMPT = `You are the elite Artistic Director for Kajal Cartel, Delhi's most exclusive bridal beauty platform. Your task is to analyze an uploaded image like a Vogue Beauty Editor.
+
+STEP 1: THE RELEVANCE GATEKEEPER
+First, determine if the image is relevant. It must contain a face, makeup, jewelry, bridal wear, or clear aesthetic fashion elements. 
+If the image is completely irrelevant (e.g., a car, an animal, a blank screen, food), you MUST abort analysis and return this exact JSON structure:
+{
+  "isBridalContext": false,
+  "styleDNA": [],
+  "editorialAnalysis": "This does not appear to be a bridal or beauty reference. Please upload a clear mood board, portrait, or makeup reference.",
+  "matches": []
+}
+
+STEP 2: THE EDITORIAL ANALYSIS
+If the image IS relevant ("isBridalContext": true), examine three dimensions precisely:
+1. SKIN ARCHITECTURE — texture philosophy, coverage density, finish quality (dewy/matte/satin/glass), preparation approach, luminosity.
+2. EYE CONSTRUCTION — liner weight and technique, shadow layering, kohl usage style, drama level, cut crease vs waterline emphasis.
+3. COLOR THEORY — palette temperature (warm/cool/neutral), saturation register, cultural aesthetic reference, harmony system.
+
+STEP 3: THE MATCHING PROTOCOL
+Match the image's aesthetic to EXACTLY THREE artists from our official roster below. You MUST ONLY use the exact slugs provided here:
+1. slug: "studio-noor" — Botanical multi-session skin prep, no-makeup satin finish, mogra hairline. Quiet luxury. Sabyasachi minimalist.
+2. slug: "meher-atelier" — Mughlai kohl to orbital bone, gold passa structure, mogra braid, luminous matte airbrush. Heritage sovereign.
+3. slug: "studio-aara" — Korean twelve-step glass skin protocol, zero-powder dewy base, photography-optimised. Contemporary editorial.
+4. slug: "priya-bhandari-artistry" — Cinematic dual-tone cut crease, plum-to-nude lip gradient, champagne brow bone highlight. Bollywood editorial.
+5. slug: "the-riya-edit" — Old-money restraint, single precise liner stroke, structured silk-press blowout. South Delhi couture.
+6. slug: "kamakshi-and-co" — Punjabi grandeur, dual-layer airbrush, vivid cut crease, gajra crown, maximum outdoor durability.
+7. slug: "safiya-studio" — Angular single-stroke graphic liner, glass skin base, architectural updo. Fashion-forward editorial.
+8. slug: "the-malviya-bride" — Triple-coat kohl, ceremonial sindoor placement, mogra braid, gold passa. Ancestral Old Delhi traditional.
+
+STEP 4: OUTPUT CONSTRAINTS
+Output ONLY a raw, minified JSON object. Do NOT wrap the JSON in markdown code blocks (e.g., \`\`\`json). Do not include any conversational text.
+
+{
+  "isBridalContext": true,
+  "styleDNA": [
+    { "label": "String (Limit strictly to: Quiet Luxury, Heritage Indian, Natural Glow, Fashion Forward, Celebratory Glam, Moody Romance, Modern Classic, Soft Romance, Bollywood Glam, Old Delhi Heritage)", "score": Number (0-100, ensure realistic variation) }
   ],
-};
- 
-const VENDOR_RANKING_SCHEMA = {
-  type: 'object',
-  properties: {
-    rankings: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          vendorSlug: {
-            type: 'string',
-          },
-          matchedTags: {
-            type: 'array',
-            items: { type: 'string' },
-          },
-          confidenceScore: {
-            type: 'number',
-          },
-          matchRationale: {
-            type: 'string',
-          },
-        },
-        required: ['vendorSlug', 'matchedTags', 'confidenceScore', 'matchRationale'],
-      },
-    },
-  },
-  required: ['rankings'],
-};
- 
-interface ImageProfile {
-  styleArchetypes: string[];
-  makeupFinishTags: string[];
-  colorPaletteAffinity: string[];
-  occasionSignals: string[];
-  skinToneSignals: string[];
-  visualNarrative: string;
-}
- 
-interface VendorRankingEntry {
-  vendorSlug: string;
-  matchedTags: string[];
-  confidenceScore: number;
-  matchRationale: string;
-}
- 
-interface VendorRankingResponse {
-  rankings: VendorRankingEntry[];
-}
- 
-interface GeminiVendorProfile {
-  slug: string;
-  name: string;
-  aestheticBio: string;
-  styleArchetypes: string[];
-  colorPaletteAffinity: string[];
-  makeupFinishTags: string[];
-  signatureElements: string | undefined;
-  moodKeywords: string[];
-  contraIndicators: string[];
-  heroPortraitCaption: string;
-}
- 
-interface ClientVendor {
-  _id: string;
-  name: string;
-  slug: string;
-  tagline: string;
-  profileImageUrl: string;
-  location: {
-    microLocation: string;
-    city: string;
-    travelPolicy: string;
-  };
-  pricing: {
-    tier: string;
-    startingFromINR: number;
-  };
-  ratings: {
-    averageRating: number;
-    totalReviews: number;
-  };
-  flags: {
-    badgeType: string | null;
-    isVerified: boolean;
-    isFeatured: boolean;
-  };
-  aestheticProfile: {
-    styleArchetypes: string[];
-    signatureElements: string | undefined;
-  };
-  serviceSummary: {
-    serviceCount: number;
-    anchorServiceCount: number;
-    priceRangeINR: { min: number; max: number };
-    occasionCoverage: string[];
-    hasTrialOffering: boolean;
-  };
-}
- 
-interface MatchResult {
-  vendor: ClientVendor;
-  matchedTags: string[];
-  confidenceScore: number;
-  matchRationale: string;
-}
- 
-function getImageAnalysisModel() {
-  return genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: IMAGE_ANALYSIS_SYSTEM_INSTRUCTION,
-    generationConfig: {
-      responseMimeType: 'application/json',
-      responseSchema: IMAGE_ANALYSIS_SCHEMA as any,
-    },
-  });
-}
- 
-function getVendorRankingModel() {
-  return genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: VENDOR_RANKING_SYSTEM_INSTRUCTION,
-    generationConfig: {
-      responseMimeType: 'application/json',
-      responseSchema: VENDOR_RANKING_SCHEMA as any,
-    },
-  });
-}
- 
-async function analyzeImage(base64: string, mimeType: string): Promise<ImageProfile> {
-  const model = getImageAnalysisModel();
- 
-  const result = await model.generateContent([
+  "editorialAnalysis": "String (Exactly 2 sentences. Sentence 1: Precise beauty-editorial breakdown of the skin and eye architecture. Sentence 2: The cultural and stylistic register this image belongs to.)",
+  "matches": [
     {
-      inlineData: { data: base64, mimeType },
-    },
-    {
-      text: 'Analyse this bridal mood board image and extract the aesthetic signals according to your taxonomy instructions.',
-    },
-  ]);
- 
-  const rawJson = result.response.text();
-  return JSON.parse(rawJson) as ImageProfile;
-}
- 
-function buildCandidateQuery(profile: ImageProfile): Record<string, unknown> {
-  const orConditions: Record<string, unknown>[] = [];
- 
-  if (profile.styleArchetypes.length) {
-    orConditions.push({
-      'aestheticProfile.styleArchetypes': { $in: profile.styleArchetypes },
-    });
-  }
-  if (profile.colorPaletteAffinity.length) {
-    orConditions.push({
-      'aestheticProfile.colorPaletteAffinity': { $in: profile.colorPaletteAffinity },
-    });
-  }
-  if (profile.makeupFinishTags.length) {
-    orConditions.push({
-      'aestheticProfile.makeupFinishTags': { $in: profile.makeupFinishTags },
-    });
-  }
-  if (profile.occasionSignals.length) {
-    orConditions.push({
-      'aestheticProfile.occasionSpecializations': { $in: profile.occasionSignals },
-    });
-  }
- 
-  return {
-    'flags.isActive': true,
-    ...(orConditions.length > 0 ? { $or: orConditions } : {}),
+      "artistSlug": "String (Must exactly match a slug from the roster)",
+      "confidenceScore": Number (0.00 to 1.00, two decimal places, highest score first),
+      "rationale": "String (One precise sentence explaining exactly how a specific detail in the user's photo aligns with this artist's signature technique.)"
+    }
+  ]
+}`;
+
+async function generateWithFallbacks(
+  imageBase64: string,
+  mimeType: string,
+  apiKey: string
+): Promise<string> {
+  const genAI = new GoogleGenerativeAI(apiKey);
+
+  const imagePart = {
+    inlineData: { data: imageBase64, mimeType },
   };
+
+  let lastError: unknown;
+
+  for (const modelId of FALLBACK_MODELS) {
+    try {
+      console.info(`[/api/match] Attempting model: ${modelId}`);
+      const model = genAI.getGenerativeModel({ model: modelId });
+      const result = await model.generateContent([imagePart, { text: MASTER_PROMPT }]);
+      const text = result.response.text();
+      if (!text || !text.trim()) throw new Error(`Empty response from ${modelId}`);
+      console.info(`[/api/match] Success with model: ${modelId}`);
+      return text;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[/api/match] ${modelId} failed — ${msg}. Trying next fallback.`);
+      lastError = err;
+    }
+  }
+
+  throw lastError ?? new Error('All models in the fallback cascade failed.');
 }
- 
-function computePreScore(vendor: Record<string, any>, profile: ImageProfile): number {
-  const ap = vendor.aestheticProfile;
-  let score = 0;
- 
-  const styleOverlap = (ap.styleArchetypes as string[]).filter((t) =>
-    profile.styleArchetypes.includes(t)
-  ).length;
-  score += styleOverlap * 3;
- 
-  const paletteOverlap = (ap.colorPaletteAffinity as string[]).filter((t) =>
-    profile.colorPaletteAffinity.includes(t)
-  ).length;
-  score += paletteOverlap * 2;
- 
-  const makeupOverlap = (ap.makeupFinishTags as string[]).filter((t) =>
-    profile.makeupFinishTags.includes(t)
-  ).length;
-  score += makeupOverlap * 1.5;
- 
-  const occasionOverlap = (ap.occasionSpecializations as string[]).filter((t) =>
-    profile.occasionSignals.includes(t)
-  ).length;
-  score += occasionOverlap * 1;
- 
-  const skinOverlap = (ap.skinToneExpertise as string[]).filter((t) =>
-    profile.skinToneSignals.includes(t)
-  ).length;
-  score += skinOverlap * 0.5;
- 
-  const contraConflicts = ((ap.contraIndicators ?? []) as string[]).filter((ci) => {
-    if (ci === 'no-airbrush' && profile.makeupFinishTags.includes('airbrush-finish')) return true;
-    if (ci === 'no-heavy-contouring' && profile.styleArchetypes.includes('manish-malhotra-shimmer')) return true;
-    return false;
-  }).length;
-  score -= contraConflicts * 1.5;
- 
-  return score;
+
+function parseAIResponse(raw: string): {
+  isBridalContext: boolean;
+  styleDNA: StyleDNAEntry[];
+  editorialAnalysis: string;
+  matches: Array<{ artistSlug: string; confidenceScore: number; rationale: string }>;
+} {
+  const cleaned = raw
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
+  const parsed = JSON.parse(cleaned);
+
+  if (typeof parsed.isBridalContext !== 'boolean') parsed.isBridalContext = true;
+  if (!Array.isArray(parsed.styleDNA)) parsed.styleDNA = [];
+  if (typeof parsed.editorialAnalysis !== 'string') parsed.editorialAnalysis = '';
+  if (!Array.isArray(parsed.matches)) parsed.matches = [];
+
+  return parsed;
 }
- 
-function buildGeminiVendorProfile(vendor: Record<string, any>): GeminiVendorProfile {
-  const portfolio = (vendor.portfolio ?? []) as Array<Record<string, any>>;
-  const heroCaption =
-    portfolio.find((p) => p.isHeroImage)?.captionForAI ??
-    portfolio[0]?.captionForAI ??
-    '';
- 
+
+function serializeVendor(v: Record<string, any>): ClientVendor {
   return {
-    slug: vendor.slug,
-    name: vendor.name,
-    aestheticBio: vendor.aestheticProfile.aestheticBio,
-    styleArchetypes: vendor.aestheticProfile.styleArchetypes,
-    colorPaletteAffinity: vendor.aestheticProfile.colorPaletteAffinity,
-    makeupFinishTags: vendor.aestheticProfile.makeupFinishTags,
-    signatureElements: vendor.aestheticProfile.signatureElements,
-    moodKeywords: vendor.aestheticProfile.moodKeywords ?? [],
-    contraIndicators: vendor.aestheticProfile.contraIndicators ?? [],
-    heroPortraitCaption: heroCaption,
-  };
-}
- 
-async function rankCandidates(
-  profile: ImageProfile,
-  candidates: Record<string, any>[]
-): Promise<VendorRankingEntry[]> {
-  const model = getVendorRankingModel();
- 
-  const vendorProfiles = candidates.map(buildGeminiVendorProfile);
- 
-  const rankingPrompt = `
-MOOD BOARD AESTHETIC PROFILE:
-Visual Narrative: ${profile.visualNarrative}
-Detected Style Archetypes: ${profile.styleArchetypes.join(', ') || 'None identified'}
-Detected Colour Palette: ${profile.colorPaletteAffinity.join(', ') || 'None identified'}
-Detected Makeup Finish: ${profile.makeupFinishTags.join(', ') || 'None identified'}
-Detected Occasion Signals: ${profile.occasionSignals.join(', ') || 'None identified'}
-Detected Skin Tone Signals: ${profile.skinToneSignals.join(', ') || 'None identified'}
- 
-SHORTLISTED ARTISTS FOR RANKING (${vendorProfiles.length} total):
-${JSON.stringify(vendorProfiles, null, 2)}
- 
-Rank all ${vendorProfiles.length} artists. Use each artist's exact slug value as the vendorSlug identifier. Return in descending order of confidenceScore.
-  `.trim();
- 
-  const result = await model.generateContent(rankingPrompt);
-  const rawJson = result.response.text();
-  const parsed = JSON.parse(rawJson) as VendorRankingResponse;
-  return parsed.rankings;
-}
- 
-function toClientVendor(vendor: Record<string, any>): ClientVendor {
-  return {
-    _id: vendor._id.toString(),
-    name: vendor.name,
-    slug: vendor.slug,
-    tagline: vendor.tagline,
-    profileImageUrl: vendor.profileImageUrl,
+    _id: v._id.toString(),
+    name: v.name,
+    slug: v.slug,
+    tagline: v.tagline,
+    profileImageUrl: v.profileImageUrl,
     location: {
-      microLocation: vendor.location.microLocation,
-      city: vendor.location.city,
-      travelPolicy: vendor.location.travelPolicy,
+      microLocation: v.location?.microLocation ?? '',
+      city: v.location?.city ?? 'New Delhi',
+      travelPolicy: v.location?.travelPolicy ?? 'all',
     },
     pricing: {
-      tier: vendor.pricing.tier,
-      startingFromINR: vendor.pricing.startingFromINR,
+      tier: v.pricing?.tier ?? 'premium',
+      startingFromINR: v.pricing?.startingFromINR ?? 0,
     },
     ratings: {
-      averageRating: vendor.ratings.averageRating,
-      totalReviews: vendor.ratings.totalReviews,
+      averageRating: v.ratings?.averageRating ?? 0,
+      totalReviews: v.ratings?.totalReviews ?? 0,
     },
     flags: {
-      badgeType: vendor.flags.badgeType ?? null,
-      isVerified: vendor.flags.isVerified,
-      isFeatured: vendor.flags.isFeatured,
+      badgeType: v.flags?.badgeType ?? null,
+      isVerified: v.flags?.isVerified ?? false,
+      isFeatured: v.flags?.isFeatured ?? false,
     },
     aestheticProfile: {
-      styleArchetypes: vendor.aestheticProfile.styleArchetypes,
-      signatureElements: vendor.aestheticProfile.signatureElements,
+      styleArchetypes: v.aestheticProfile?.styleArchetypes ?? [],
+      signatureElements: v.aestheticProfile?.signatureElements,
     },
     serviceSummary: {
-      serviceCount: vendor.serviceSummary.serviceCount,
-      anchorServiceCount: vendor.serviceSummary.anchorServiceCount,
-      priceRangeINR: vendor.serviceSummary.priceRangeINR,
-      occasionCoverage: vendor.serviceSummary.occasionCoverage,
-      hasTrialOffering: vendor.serviceSummary.hasTrialOffering,
+      serviceCount: v.serviceSummary?.serviceCount ?? 0,
+      anchorServiceCount: v.serviceSummary?.anchorServiceCount ?? 0,
+      priceRangeINR: v.serviceSummary?.priceRangeINR ?? { min: 0, max: 0 },
+      occasionCoverage: v.serviceSummary?.occasionCoverage ?? [],
+      hasTrialOffering: v.serviceSummary?.hasTrialOffering ?? false,
     },
   };
 }
- 
+
 export async function POST(request: Request): Promise<NextResponse> {
-  if (!process.env.GEMINI_API_KEY) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
     return NextResponse.json(
       { error: 'GEMINI_API_KEY is not configured on this server.' },
       { status: 500 }
     );
   }
- 
+
   let body: unknown;
   try {
     body = await request.json();
@@ -419,93 +181,148 @@ export async function POST(request: Request): Promise<NextResponse> {
       { status: 400 }
     );
   }
- 
+
   const raw = body as Record<string, unknown>;
- 
+
   if (!raw.imageBase64 || typeof raw.imageBase64 !== 'string' || raw.imageBase64.length === 0) {
     return NextResponse.json(
       { error: 'imageBase64 is required and must be a non-empty string.' },
       { status: 400 }
     );
   }
- 
+
   if (!raw.mimeType || typeof raw.mimeType !== 'string') {
-    return NextResponse.json(
-      { error: 'mimeType is required.' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: 'mimeType is required.' }, { status: 400 });
   }
- 
+
   if (!ALLOWED_MIME_TYPES.includes(raw.mimeType as string)) {
     return NextResponse.json(
-      {
-        error: `Unsupported file type "${raw.mimeType}". Accepted types: ${ALLOWED_MIME_TYPES.join(', ')}.`,
-      },
+      { error: `Unsupported file type. Accepted: ${ALLOWED_MIME_TYPES.join(', ')}.` },
       { status: 400 }
     );
   }
- 
+
   const estimatedBytes = Math.ceil((raw.imageBase64 as string).length * 0.75);
   if (estimatedBytes > MAX_FILE_SIZE_BYTES) {
-    return NextResponse.json(
-      { error: 'Image must be under 10MB.' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: 'Image must be under 10MB.' }, { status: 400 });
   }
- 
-  const imageBase64 = raw.imageBase64 as string;
-  const imageMimeType = raw.mimeType as string;
- 
+
+  let rawAI: string;
   try {
-    const imageProfile = await analyzeImage(imageBase64, imageMimeType);
- 
-    await dbConnect();
- 
-    const candidateQuery = buildCandidateQuery(imageProfile);
-    const rawCandidates = await Vendor.find(candidateQuery)
-      .lean<Record<string, any>[]>()
-      .limit(CANDIDATE_POOL_SIZE * 2);
- 
-    if (!rawCandidates.length) {
-      return NextResponse.json(
-        {
-          matches: [],
-          imageProfile,
-          message:
-            'No artists in the Cartel matched the visual profile of this mood board. Try a different image.',
-        },
-        { status: 200 }
-      );
-    }
- 
-    const preScoredCandidates = rawCandidates
-      .map((vendor) => ({ vendor, preScore: computePreScore(vendor, imageProfile) }))
-      .sort((a, b) => b.preScore - a.preScore)
-      .slice(0, CANDIDATE_POOL_SIZE);
- 
-    const rankings = await rankCandidates(
-      imageProfile,
-      preScoredCandidates.map((c) => c.vendor)
+    rawAI = await generateWithFallbacks(
+      raw.imageBase64 as string,
+      raw.mimeType as string,
+      apiKey
     );
- 
-    const vendorBySlug = new Map(
-      preScoredCandidates.map((c) => [c.vendor.slug as string, c.vendor])
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[/api/match] All fallback models failed:', msg);
+    return NextResponse.json(
+      {
+        error:
+          'The Kajal Cartel AI is currently styling an unprecedented number of brides. Please try your upload again in a few moments.',
+      },
+      { status: 500 }
     );
- 
-    const matches: MatchResult[] = rankings
-      .filter((r) => vendorBySlug.has(r.vendorSlug))
-      .slice(0, TOP_MATCH_COUNT)
-      .map((ranking) => ({
-        vendor: toClientVendor(vendorBySlug.get(ranking.vendorSlug)!),
-        matchedTags: ranking.matchedTags,
-        confidenceScore: Math.min(1.0, Math.max(0.0, ranking.confidenceScore)),
-        matchRationale: ranking.matchRationale,
-      }));
- 
-    return NextResponse.json({ matches, imageProfile }, { status: 200 });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'An unexpected error occurred.';
-    return NextResponse.json({ error: message }, { status: 500 });
   }
+
+  let parsed: ReturnType<typeof parseAIResponse>;
+  try {
+    parsed = parseAIResponse(rawAI);
+  } catch (err) {
+    console.error('[/api/match] Failed to parse AI response:', rawAI, err);
+    return NextResponse.json(
+      {
+        error:
+          'The Kajal Cartel AI is currently styling an unprecedented number of brides. Please try your upload again in a few moments.',
+      },
+      { status: 500 }
+    );
+  }
+
+  if (parsed.isBridalContext === false) {
+    return NextResponse.json(
+      {
+        error:
+          'Please upload a bridal makeup or beauty reference photo, a celebrity look, a magazine editorial, or a Pinterest save. This image does not contain enough style signals for a match.',
+      },
+      { status: 422 }
+    );
+  }
+
+  try {
+    await dbConnect();
+  } catch (err) {
+    console.error('[/api/match] DB connection failed:', err);
+    return NextResponse.json(
+      { error: 'Database connection failed. Please try again.' },
+      { status: 500 }
+    );
+  }
+
+  const validSlugs = parsed.matches
+    .map((m) => m.artistSlug)
+    .filter((s) => typeof s === 'string' && s.length > 0);
+
+  if (validSlugs.length === 0) {
+    return NextResponse.json(
+      { error: 'No valid artist matches were returned by the AI. Please try a different image.' },
+      { status: 422 }
+    );
+  }
+
+  const vendorDocs = await Vendor.find({
+    slug: { $in: validSlugs },
+    'flags.isActive': true,
+  }).lean<Record<string, any>[]>();
+
+  const vendorMap = new Map(vendorDocs.map((v) => [v.slug, v]));
+
+  const matches: MatchResult[] = [];
+  for (const aiMatch of parsed.matches) {
+    const vendorDoc = vendorMap.get(aiMatch.artistSlug);
+    if (!vendorDoc) {
+      console.warn(`[/api/match] AI returned unknown or inactive slug: "${aiMatch.artistSlug}"`);
+      continue;
+    }
+    matches.push({
+      vendor: serializeVendor(vendorDoc),
+      matchedTags: parsed.styleDNA.map((d) => d.label),
+      confidenceScore: Math.min(1, Math.max(0, Number(aiMatch.confidenceScore))),
+      matchRationale: aiMatch.rationale,
+    });
+  }
+
+  if (matches.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          'We could not find matching artists for this image. Please try uploading a bridal makeup or beauty reference photo.',
+      },
+      { status: 422 }
+    );
+  }
+
+  const styleDNA: StyleDNAEntry[] = parsed.styleDNA.map((d) => ({
+    label: String(d.label),
+    score: Math.min(100, Math.max(0, Number(d.score))),
+  }));
+
+  const imageProfile: ImageProfile = {
+    styleArchetypes: styleDNA.map((d) => d.label),
+    makeupFinishTags: [],
+    colorPaletteAffinity: [],
+    occasionSignals: [],
+    skinToneSignals: [],
+    visualNarrative: parsed.editorialAnalysis,
+  };
+
+  const response: MatchResponse = {
+    matches,
+    imageProfile,
+    styleDNA,
+    editorialAnalysis: parsed.editorialAnalysis,
+  };
+
+  return NextResponse.json(response, { status: 200 });
 }

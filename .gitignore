@@ -1,8 +1,4 @@
-### 2. The `.gitignore`
 
-Save this exactly as `.gitignore` in the root of your project. The most important line here is `.env*.local`, which guarantees your Gemini and MongoDB keys stay private.
-
-```text
 # dependencies
 /node_modules
 /.pnp
@@ -29,6 +25,7 @@ yarn-error.log*
 
 # local env files (CRITICAL: Do not remove these)
 .env*.local
+.env.local
 .env
 .env.development.local
 .env.test.local
