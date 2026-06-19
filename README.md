@@ -4,7 +4,7 @@ Find your perfect bridal makeup artist in New Delhi.
 
 ## Live Website
 
-You can view the live application here: [kajal-cartel.vercel.app](https://www.google.com/search?q=https://kajal-cartel.vercel.app)
+You can view the live application here: [kajal-cartel.vercel.app](https://kajal-cartel.vercel.app/)
 
 ## The Idea
 
