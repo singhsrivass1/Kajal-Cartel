@@ -2,6 +2,10 @@
 
 Find your perfect bridal makeup artist in New Delhi.
 
+## Live Website
+
+You can view the live application here: [kajal-cartel.vercel.app](https://www.google.com/search?q=https://kajal-cartel.vercel.app)
+
 ## The Idea
 
 Planning a wedding is stressful enough without scrolling through hundreds of makeup artist profiles, trying to guess if they can recreate the specific look you want. We wanted to make finding the right artist as simple as sharing a picture.
@@ -21,7 +25,18 @@ It then pairs you with top-tier makeup artists in New Delhi who specialize in th
 * **Curated matches:** Get a short list of verified artists who match your style, complete with clear reasons why they fit your vision.
 * **Simple booking:** View the artist's full profile, get a price estimate, and request to book directly through the platform.
 
-## How to Run This Project
+## Technology Stack
+
+This platform is built using modern, fast, and reliable web technologies:
+
+* **Framework:** Next.js (App Router)
+* **Language:** TypeScript
+* **Artificial Intelligence:** Google Gemini API
+* **Database:** MongoDB
+* **Styling and Animation:** Tailwind CSS and Framer Motion
+* **Hosting:** Vercel
+
+## How to Run This Project Locally
 
 If you want to run this website on your own computer, follow these steps:
 
