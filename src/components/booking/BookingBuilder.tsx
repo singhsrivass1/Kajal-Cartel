@@ -16,14 +16,14 @@ function formatDuration(min: number) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-/* ── Availability indicator ─────────────────────────────────── */
+
 function availabilityStatus(leadDays: number, totalReviews: number): { label: string; color: string; dot: string } {
   if (leadDays >= 45 || totalReviews > 100) return { label: 'Almost fully booked', color: '#C9623A', dot: '#C9623A' };
   if (leadDays >= 21 || totalReviews > 50) return { label: 'Limited availability', color: '#C9A96E', dot: '#C9A96E' };
   return { label: 'Good availability', color: '#5A8A5A', dot: '#5A8A5A' };
 }
 
-/* ── Lead time banner ───────────────────────────────────────── */
+
 function LeadTimeBanner({ artist }: { artist: ArtistProfile }) {
   const avail = availabilityStatus(artist.businessMeta.bookingLeadTimeDays, artist.ratings.totalReviews);
   return (
@@ -38,7 +38,7 @@ function LeadTimeBanner({ artist }: { artist: ArtistProfile }) {
   );
 }
 
-/* ── Anchor service card ────────────────────────────────────── */
+
 function AnchorCard({ service, isSelected, onSelect }: { service: ClientService; isSelected: boolean; onSelect: () => void }) {
   return (
     <div onClick={onSelect} style={{ cursor: 'pointer', border: `1px solid ${isSelected ? '#C9A96E' : '#1C1C1C'}`, padding: '16px', background: isSelected ? '#0D0B08' : 'transparent', transition: 'border-color 0.2s, background 0.2s' }}>
@@ -65,7 +65,7 @@ function AnchorCard({ service, isSelected, onSelect }: { service: ClientService;
   );
 }
 
-/* ── Add-on card ────────────────────────────────────────────── */
+
 function AddOnCard({ service, quantity, onQuantityChange }: { service: ClientService; quantity: number; onQuantityChange: (delta: number) => void }) {
   const activeTier = [...service.pricing.groupDiscountTiers].filter(t => quantity >= t.minQuantity).sort((a, b) => b.discountPercent - a.discountPercent)[0];
   const effectiveUnit = activeTier && service.checkoutMeta.estimateContribution === 'tiered'
@@ -111,7 +111,7 @@ function AddOnCard({ service, quantity, onQuantityChange }: { service: ClientSer
   );
 }
 
-/* ── Estimate breakdown ─────────────────────────────────────── */
+
 function EstimateBreakdown({ estimate, onRequestBook }: { estimate: EstimateResult; onRequestBook: () => void }) {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
@@ -168,7 +168,7 @@ function EstimateBreakdown({ estimate, onRequestBook }: { estimate: EstimateResu
   );
 }
 
-/* ── BOOKING CONFIRMATION ───────────────────────────────────── */
+
 function BookingConfirmation({
   artist,
   estimate,
@@ -249,7 +249,7 @@ function BookingConfirmation({
   );
 }
 
-/* ── BOOKING BUILDER ────────────────────────────────────────── */
+
 interface BookingBuilderProps { artist: ArtistProfile; services: ClientService[]; }
 
 export function BookingBuilder({ artist, services }: BookingBuilderProps) {

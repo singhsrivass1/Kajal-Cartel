@@ -9,7 +9,7 @@ const FONT_DISPLAY = '"Cormorant Garamond", "Cormorant", Georgia, serif';
 type AuthMode = 'signin' | 'signup';
 type AuthStep = 'entry' | 'email_sent';
 
-// UPDATED: Now accepts a ReactNode for the icon so we can pass in SVGs instead of text emojis
+
 function SocialButton({ icon, label }: { icon: React.ReactNode; label: string }) {
   const [hover, setHover] = useState(false);
   return (
@@ -23,7 +23,7 @@ function SocialButton({ icon, label }: { icon: React.ReactNode; label: string })
   );
 }
 
-// Google SVG Icon
+
 const GoogleIcon = (
   <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -33,7 +33,7 @@ const GoogleIcon = (
   </svg>
 );
 
-// Apple SVG Icon (kept minimal/monochrome to match your dark luxury theme)
+
 const AppleIcon = (
   <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.74.83 0 2.04-.84 3.65-.7-1.47 2.4-1.04 4.88 1.1 5.92-1.2 2.58-2.67 5.25-5.32 5.3M12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25"/>
@@ -89,7 +89,7 @@ export function AuthClient() {
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '28px' }}>
-                  {/* UPDATED: Passing the SVG components instead of strings */}
+                  {}
                   <SocialButton icon={GoogleIcon} label="Continue with Google" />
                   <SocialButton icon={AppleIcon} label="Continue with Apple" />
                 </div>

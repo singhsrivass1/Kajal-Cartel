@@ -8,7 +8,7 @@ import type { ClientVendor, MatchResponse } from '@/types/match';
 
 const FONT_DISPLAY = '"Cormorant Garamond", "Cormorant", Georgia, serif';
 
-/* ── HEADER ─────────────────────────────────────────────────── */
+
 function Header({ onScrollToMatcher, onScrollToRoster }: { onScrollToMatcher: () => void; onScrollToRoster: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -47,7 +47,7 @@ function Header({ onScrollToMatcher, onScrollToRoster }: { onScrollToMatcher: ()
   );
 }
 
-/* ── BROWSE SECTION ──────────────────────────────────────────── */
+
 function BrowseSection({ vendors, matchData }: { vendors: ClientVendor[]; matchData: MatchResponse | null }) {
   return (
     <AnimatePresence mode="wait">
@@ -100,7 +100,7 @@ function BrowseSection({ vendors, matchData }: { vendors: ClientVendor[]; matchD
   );
 }
 
-/* ── PAGE CLIENT ─────────────────────────────────────────────── */
+
 interface DiscoverPageClientProps { vendors: ClientVendor[]; }
 
 export function DiscoverPageClient({ vendors }: DiscoverPageClientProps) {

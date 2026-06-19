@@ -13,11 +13,11 @@ const fadeUp = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-// 1. SINGLE, CLEAN CORNER NAVIGATION (Logo Removed)
+
 function Header() {
   return (
     <header className="absolute top-0 left-0 right-0 z-50 px-6 lg:px-12 py-8 flex justify-end items-center">
-      {/* Unified top-right navigation */}
+      {}
       <nav className="flex gap-6 text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-[#F0EBE0]">
         <Link href="/discover" className="hover:text-[#C9A96E] transition-colors">Discover</Link>
         <Link href="/discover#roster" className="hover:text-[#C9A96E] transition-colors">Roster</Link>
@@ -28,7 +28,7 @@ function Header() {
   );
 }
 
-// 2. HIGH-CONTRAST HERO (Only Bridal Image)
+
 function HeroSection() {
   return (
     <section className="relative h-screen min-h-[640px] w-full flex items-center justify-center overflow-hidden bg-[#080808]">
@@ -42,7 +42,7 @@ function HeroSection() {
           className="object-cover"
           sizes="100vw"
         />
-        {/* Heavy gradient ensures perfect text legibility */}
+        {}
         <div className="absolute inset-0 bg-gradient-to-b from-[#080808]/70 via-[#080808]/40 to-[#080808]" />
       </div>
 
@@ -68,7 +68,7 @@ function HeroSection() {
   );
 }
 
-// 3. INTERIOR IMAGES + CASUAL INDIAN REVIEWS
+
 function ExperienceAndReviews() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: '-100px' });
@@ -92,7 +92,7 @@ function ExperienceAndReviews() {
     <section ref={ref} className="py-32 px-6 lg:px-12 bg-[#080808]">
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
         
-        {/* Left Side: Interior Image */}
+        {}
         <motion.div variants={fadeUp} initial="hidden" animate={inView ? 'visible' : 'hidden'} className="relative aspect-[4/5] overflow-hidden bg-[#0E0E0E]">
            <Image 
              src="/images/interior-01.png" 
@@ -103,7 +103,7 @@ function ExperienceAndReviews() {
            />
         </motion.div>
 
-        {/* Right Side: Reviews on solid black for perfect reading */}
+        {}
         <motion.div variants={fadeUp} initial="hidden" animate={inView ? 'visible' : 'hidden'} className="flex flex-col justify-center">
           <h2 style={{ fontFamily: FONT_DISPLAY }} className="text-3xl lg:text-4xl text-[#F0EBE0] mb-12">
             The standard of Delhi bridal beauty.
@@ -128,7 +128,7 @@ function ExperienceAndReviews() {
   );
 }
 
-// 4. CLEAN ROSTER GRID
+
 function RosterSection({ vendors }: { vendors: ClientVendor[] }) {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: '-50px' });

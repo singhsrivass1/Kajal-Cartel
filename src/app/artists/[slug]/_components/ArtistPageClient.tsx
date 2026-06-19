@@ -14,7 +14,7 @@ const BADGE_CONFIG: Record<string, { background: string; color: string }> = {
   'Heritage Master': { background: 'linear-gradient(135deg, #6B2E3A 0%, #3D1622 100%)', color: '#C9A96E' },
 };
 
-/* ── Human-readable label maps ─────────────────────────────── */
+
 const ARCHETYPE_LABEL: Record<string, string> = {
   'sabyasachi-minimalist': 'Minimal, understated bridal looks',
   'raw-mango-organic': 'Natural, handloom-inspired styles',
@@ -56,7 +56,7 @@ const TRAVEL_LABEL: Record<string, string> = {
 
 const PORTFOLIO_ASPECTS = ['padding-bottom: 133%', 'padding-bottom: 125%', 'padding-bottom: 100%', 'padding-bottom: 125%', 'padding-bottom: 133%'];
 
-/* ── HEADER ────────────────────────────────────────────────── */
+
 function SiteHeader({ artist }: { artist: ArtistProfile }) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -84,7 +84,7 @@ function SiteHeader({ artist }: { artist: ArtistProfile }) {
   );
 }
 
-/* ── HERO ──────────────────────────────────────────────────── */
+
 function HeroSection({ artist }: { artist: ArtistProfile }) {
   const badge = artist.flags.badgeType ? BADGE_CONFIG[artist.flags.badgeType] : null;
   return (
@@ -117,12 +117,12 @@ function HeroSection({ artist }: { artist: ArtistProfile }) {
   );
 }
 
-/* ── DIVIDER ────────────────────────────────────────────────── */
+
 function Divider() {
   return <div style={{ height: '1px', background: '#141210', margin: '32px 0' }} />;
 }
 
-/* ── ABOUT SECTION ──────────────────────────────────────────── */
+
 function AboutSection({ artist }: { artist: ArtistProfile }) {
   const ap = artist.aestheticProfile;
   const bestFor = [
@@ -183,7 +183,7 @@ function AboutSection({ artist }: { artist: ArtistProfile }) {
   );
 }
 
-/* ── PORTFOLIO ──────────────────────────────────────────────── */
+
 function PortfolioSection({ portfolio }: { portfolio: ArtistProfile['portfolio'] }) {
   if (!portfolio.length) return null;
   return (
@@ -212,7 +212,7 @@ function PortfolioSection({ portfolio }: { portfolio: ArtistProfile['portfolio']
   );
 }
 
-/* ── DETAILS ────────────────────────────────────────────────── */
+
 function DetailsSection({ artist }: { artist: ArtistProfile }) {
   const bm = artist.businessMeta;
   const items = [
@@ -253,7 +253,7 @@ function DetailsSection({ artist }: { artist: ArtistProfile }) {
   );
 }
 
-/* ── PAGE ────────────────────────────────────────────────────── */
+
 interface ArtistPageClientProps { artist: ArtistProfile; services: ClientService[]; }
 
 export function ArtistPageClient({ artist, services }: ArtistPageClientProps) {

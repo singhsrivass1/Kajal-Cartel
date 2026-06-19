@@ -29,7 +29,7 @@ const PROCESSING_STEPS = [
 
 type WidgetState = 'idle' | 'processing' | 'success' | 'error';
 
-/* ── Step indicator ─────────────────────────────────────────── */
+
 function StepItem({
   label,
   status,
@@ -81,7 +81,7 @@ function StepItem({
   );
 }
 
-/* ── Style DNA bars ─────────────────────────────────────────── */
+
 function StyleDNABars({ dna, animate: doAnimate }: { dna: StyleDNAEntry[]; animate: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -105,7 +105,7 @@ function StyleDNABars({ dna, animate: doAnimate }: { dna: StyleDNAEntry[]; anima
   );
 }
 
-/* ── IDLE ───────────────────────────────────────────────────── */
+
 function IdleView({
   isDragOver,
   onDragOver,
@@ -246,7 +246,7 @@ function IdleView({
   );
 }
 
-/* ── PROCESSING ─────────────────────────────────────────────── */
+
 function ProcessingView({ previewUrl, step }: { previewUrl: string | null; step: number }) {
   const pct = Math.round(((step + 1) / PROCESSING_STEPS.length) * 100);
   return (
@@ -363,7 +363,7 @@ function ProcessingView({ previewUrl, step }: { previewUrl: string | null; step:
   );
 }
 
-/* ── COMPACT SUCCESS (used when page owns the results grid) ─── */
+
 function CompactSuccessView({
   matchData,
   previewUrl,
@@ -515,7 +515,7 @@ function CompactSuccessView({
   );
 }
 
-/* ── FULL SUCCESS (standalone) ──────────────────────────────── */
+
 function FullSuccessView({
   matchData,
   previewUrl,
@@ -640,7 +640,7 @@ function FullSuccessView({
   );
 }
 
-/* ── WIDGET SHELL ───────────────────────────────────────────── */
+
 interface MoodBoardWidgetProps {
   onMatchSuccess?: (data: MatchResponse) => void;
 }
