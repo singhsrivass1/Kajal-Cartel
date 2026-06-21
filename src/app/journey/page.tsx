@@ -77,7 +77,7 @@ export default async function JourneyPage() {
     const vendorMap = new Map(vendors.map((v) => [v.slug, v]));
     savedVendors = savedArtistSlugs
       .map((slug) => vendorMap.get(slug))
-      .filter(Boolean)
+      .filter((v): v is Record<string, any> => v !== undefined)
       .map(serializeVendor);
   }
 
