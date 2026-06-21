@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import React from "react";
+import { Providers } from "@/components/Providers"; // Ensure this path matches where you saved Providers.tsx
 
 export const metadata: Metadata = {
   title: "Kajal Cartel",
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-[#080808] text-[#F0EBE0] antialiased">
-        <main>{children}</main>
+        <Providers>
+          <main>{children}</main>
+        </Providers>
       </body>
     </html>
   );

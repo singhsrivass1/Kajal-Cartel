@@ -5,6 +5,7 @@ import Vendor from '@/lib/db/models/Vendor';
 import Service from '@/lib/db/models/Service';
 import { ArtistPageClient } from './_components/ArtistPageClient';
 import type { ArtistProfile, ClientService } from '@/types/artist';
+import SaveArtistButton from "@/components/SaveArtistButton";
 
 export const dynamic = 'force-dynamic';
 
@@ -181,5 +182,17 @@ export default async function ArtistPage({ params }: PageProps) {
   const artist = serializeArtist(rawVendor);
   const services = rawServices.map(serializeService);
 
-  return <ArtistPageClient artist={artist} services={services} />;
+  return (
+    <div className="relative w-full">
+      {/* This is the new overlay wrapper. 
+        It drops the Save button into the top right corner of the screen, 
+        floating beautifully above your Framer Motion UI.
+      */}
+      <div className="absolute top-6 right-6 md:top-10 md:right-10 z-50">
+        <SaveArtistButton artistSlug={artist.slug} />
+      </div>
+      
+      <ArtistPageClient artist={artist} services={services} />
+    </div>
+  );
 }

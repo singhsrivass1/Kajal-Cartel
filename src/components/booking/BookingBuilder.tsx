@@ -16,13 +16,11 @@ function formatDuration(min: number) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-
 function availabilityStatus(leadDays: number, totalReviews: number): { label: string; color: string; dot: string } {
   if (leadDays >= 45 || totalReviews > 100) return { label: 'Almost fully booked', color: '#C9623A', dot: '#C9623A' };
   if (leadDays >= 21 || totalReviews > 50) return { label: 'Limited availability', color: '#C9A96E', dot: '#C9A96E' };
   return { label: 'Good availability', color: '#5A8A5A', dot: '#5A8A5A' };
 }
-
 
 function LeadTimeBanner({ artist }: { artist: ArtistProfile }) {
   const avail = availabilityStatus(artist.businessMeta.bookingLeadTimeDays, artist.ratings.totalReviews);
@@ -37,7 +35,6 @@ function LeadTimeBanner({ artist }: { artist: ArtistProfile }) {
     </div>
   );
 }
-
 
 function AnchorCard({ service, isSelected, onSelect }: { service: ClientService; isSelected: boolean; onSelect: () => void }) {
   return (
@@ -64,7 +61,6 @@ function AnchorCard({ service, isSelected, onSelect }: { service: ClientService;
     </div>
   );
 }
-
 
 function AddOnCard({ service, quantity, onQuantityChange }: { service: ClientService; quantity: number; onQuantityChange: (delta: number) => void }) {
   const activeTier = [...service.pricing.groupDiscountTiers].filter(t => quantity >= t.minQuantity).sort((a, b) => b.discountPercent - a.discountPercent)[0];
@@ -111,8 +107,7 @@ function AddOnCard({ service, quantity, onQuantityChange }: { service: ClientSer
   );
 }
 
-
-function EstimateBreakdown({ estimate, onRequestBook }: { estimate: EstimateResult; onRequestBook: () => void }) {
+function EstimateBreakdown({ estimate, onRequestBook, isBooking }: { estimate: EstimateResult; onRequestBook: () => void; isBooking?: boolean }) {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
       <p style={{ fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', color: '#C9A96E', marginBottom: '18px' }}>Estimate</p>
@@ -159,28 +154,30 @@ function EstimateBreakdown({ estimate, onRequestBook }: { estimate: EstimateResu
 
       <button
         onClick={onRequestBook}
-        style={{ width: '100%', padding: '15px 0', fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', fontWeight: 600, background: '#C9A96E', color: '#080808', border: 'none', cursor: 'pointer', transition: 'background 0.2s' }}
-        onMouseEnter={e => (e.currentTarget.style.background = '#B8943F')}
-        onMouseLeave={e => (e.currentTarget.style.background = '#C9A96E')}>
-        Request to Book
+        disabled={isBooking}
+        style={{ width: '100%', padding: '15px 0', fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', fontWeight: 600, background: isBooking ? '#8B6A1A' : '#C9A96E', color: '#080808', border: 'none', cursor: isBooking ? 'not-allowed' : 'pointer', transition: 'background 0.2s', opacity: isBooking ? 0.75 : 1 }}
+        onMouseEnter={e => !isBooking && (e.currentTarget.style.background = '#B8943F')}
+        onMouseLeave={e => !isBooking && (e.currentTarget.style.background = isBooking ? '#8B6A1A' : '#C9A96E')}>
+        {isBooking ? 'Sending request…' : 'Request to Book'}
       </button>
     </motion.div>
   );
 }
 
-
 function BookingConfirmation({
   artist,
   estimate,
   anchorName,
+  bookingRef,
   onClose,
 }: {
   artist: ArtistProfile;
   estimate: EstimateResult;
   anchorName: string;
+  bookingRef: string;
   onClose: () => void;
 }) {
-  const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const ref = bookingRef || Math.random().toString(36).slice(2, 8).toUpperCase();
 
   return (
     <motion.div
@@ -249,7 +246,6 @@ function BookingConfirmation({
   );
 }
 
-
 interface BookingBuilderProps { artist: ArtistProfile; services: ClientService[]; }
 
 export function BookingBuilder({ artist, services }: BookingBuilderProps) {
@@ -259,6 +255,8 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
   const [estimate, setEstimate] = useState<EstimateResult | null>(null);
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [bookingRef, setBookingRef] = useState<string>('');
+  const [isBooking, setIsBooking] = useState(false);
 
   const anchorServices = services.filter(s => s.serviceRole === 'anchor' && s.flags.isActive).sort((a, b) => a.checkoutMeta.displayPriority - b.checkoutMeta.displayPriority);
 
@@ -369,7 +367,31 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
         {estimate && (
           <motion.div key="estimate" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.45 }} style={{ overflow: 'hidden' }}>
             <div style={{ borderTop: '1px solid #1C1C1C', padding: '20px', background: '#0D0B09' }}>
-              <EstimateBreakdown estimate={estimate} onRequestBook={() => setBookingConfirmed(true)} />
+              <EstimateBreakdown estimate={estimate} isBooking={isBooking} onRequestBook={async () => {
+                if (!selectedAnchor || !estimate || isBooking) return;
+                setIsBooking(true);
+                try {
+                  const res = await fetch('/api/book', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      artistSlug: artist.slug,
+                      artistName: artist.name,
+                      anchorServiceName: selectedAnchor.name,
+                      lineItems: estimate.lineItems,
+                      totalINR: estimate.total,
+                      depositINR: estimate.depositAmount,
+                    }),
+                  });
+                  const data = await res.json();
+                  setBookingRef(data.ref ?? 'KC-' + Math.random().toString(36).slice(2,8).toUpperCase());
+                } catch {
+                  setBookingRef('KC-' + Math.random().toString(36).slice(2,8).toUpperCase());
+                } finally {
+                  setIsBooking(false);
+                  setBookingConfirmed(true);
+                }
+              }} />
             </div>
           </motion.div>
         )}
@@ -381,6 +403,7 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
             key="booking-confirmation"
             artist={artist}
             estimate={estimate}
+            bookingRef={bookingRef}
             anchorName={selectedAnchor.name}
             onClose={() => {
               setBookingConfirmed(false);

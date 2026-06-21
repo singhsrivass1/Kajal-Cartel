@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
+import { signIn } from 'next-auth/react'; 
 
 const FONT_DISPLAY = '"Cormorant Garamond", "Cormorant", Georgia, serif';
 
@@ -10,11 +11,15 @@ type AuthMode = 'signin' | 'signup';
 type AuthStep = 'entry' | 'email_sent';
 
 
-function SocialButton({ icon, label }: { icon: React.ReactNode; label: string }) {
+function SocialButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
   const [hover, setHover] = useState(false);
   return (
-    <button onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ width: '100%', padding: '13px 16px', background: 'none', border: `1px solid ${hover ? '#2D2418' : '#1C1C1C'}`, color: hover ? '#F0EBE0' : '#6A5A50', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'flex-start', justifyContent: 'center', gap: '12px', transition: 'border-color 0.2s, color 0.2s', letterSpacing: '0.02em' }}>
+    <button 
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)} 
+      onMouseLeave={() => setHover(false)}
+      style={{ width: '100%', padding: '13px 16px', background: 'none', border: `1px solid ${hover ? '#2D2418' : '#1C1C1C'}`, color: hover ? '#F0EBE0' : '#6A5A50', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'flex-start', justifyContent: 'center', gap: '12px', transition: 'border-color 0.2s, color 0.2s', letterSpacing: '0.02em' }}
+    >
       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {icon}
       </span>
@@ -22,7 +27,6 @@ function SocialButton({ icon, label }: { icon: React.ReactNode; label: string })
     </button>
   );
 }
-
 
 const GoogleIcon = (
   <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
@@ -32,7 +36,6 @@ const GoogleIcon = (
     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
   </svg>
 );
-
 
 const AppleIcon = (
   <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -46,6 +49,17 @@ export function AuthClient() {
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await signIn('google', { callbackUrl: '/journey' });
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      setIsLoading(false);
+    }
+  };
 
   const handleEmailSubmit = async () => {
     if (!email || !email.includes('@')) { setEmailError('Please enter a valid email address.'); return; }
@@ -90,7 +104,11 @@ export function AuthClient() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '28px' }}>
                   {}
-                  <SocialButton icon={GoogleIcon} label="Continue with Google" />
+                  <SocialButton 
+                    icon={GoogleIcon} 
+                    label="Continue with Google" 
+                    onClick={handleGoogleSignIn} 
+                  />
                   <SocialButton icon={AppleIcon} label="Continue with Apple" />
                 </div>
 
