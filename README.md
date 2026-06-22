@@ -1,8 +1,3 @@
-Here is the updated, production-ready `README.md`.
-
-I have updated the Features, Tech Stack, and Local Setup sections to reflect the actual architecture we just deployed—including NextAuth, Resend, the Journey Dashboard, and the crucial environment variables and `--legacy-peer-deps` flags required to run the app without crashing.
-
----
 
 # Kajal Cartel
 
