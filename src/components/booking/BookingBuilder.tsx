@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ArtistProfile, ClientService, EstimateResult } from '@/types/artist';
 
 const FONT_DISPLAY = '"Cormorant Garamond", "Cormorant", Georgia, serif';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function formatINR(n: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
@@ -16,22 +19,143 @@ function formatDuration(min: number) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-function availabilityStatus(leadDays: number, totalReviews: number): { label: string; color: string; dot: string } {
-  if (leadDays >= 45 || totalReviews > 100) return { label: 'Almost fully booked', color: '#C9623A', dot: '#C9623A' };
-  if (leadDays >= 21 || totalReviews > 50) return { label: 'Limited availability', color: '#C9A96E', dot: '#C9A96E' };
-  return { label: 'Good availability', color: '#5A8A5A', dot: '#5A8A5A' };
+interface DailyAvailability {
+  vendorSlug: string;
+  serviceId: string;
+  date: string;
+  configured: boolean;
+  isOpen: boolean;
+  isBlocked: boolean;
+  blockedReason?: string;
+  durationMinutes: number;
+  slotIntervalMinutes: number;
+  slots: string[];
 }
 
-function LeadTimeBanner({ artist }: { artist: ArtistProfile }) {
-  const avail = availabilityStatus(artist.businessMeta.bookingLeadTimeDays, artist.ratings.totalReviews);
+interface UpcomingDate {
+  iso: string;
+  weekday: string;
+  day: string;
+}
+
+function nextNDatesUTC(n: number): UpcomingDate[] {
+  const now = new Date();
+  const startMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dates: UpcomingDate[] = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(startMs + i * 86400000);
+    const iso = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    dates.push({
+      iso,
+      weekday: d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
+      day: String(d.getUTCDate()),
+    });
+  }
+  return dates;
+}
+
+function formatSlotLabel(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${m.toString().padStart(2, '0')} ${period}`;
+}
+
+function DateSlotPicker({
+  service,
+  dates,
+  selectedDate,
+  onSelectDate,
+  availability,
+  isLoading,
+  error,
+  selectedSlot,
+  onSelectSlot,
+}: {
+  service: ClientService;
+  dates: UpcomingDate[];
+  selectedDate: string | null;
+  onSelectDate: (iso: string) => void;
+  availability: DailyAvailability | null;
+  isLoading: boolean;
+  error: string | null;
+  selectedSlot: string | null;
+  onSelectSlot: (slot: string) => void;
+}) {
   return (
-    <div style={{ padding: '12px 16px', background: '#0C0C0C', borderBottom: '1px solid #1A1A1A', display: 'flex', alignItems: 'center', gap: '10px' }}>
-      <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }}
-        style={{ width: '6px', height: '6px', borderRadius: '50%', background: avail.dot, flexShrink: 0 }} />
-      <p style={{ fontSize: '11px', color: avail.color, margin: 0 }}>{avail.label}</p>
-      <p style={{ fontSize: '11px', color: '#3A3530', margin: '0 0 0 auto' }}>
-        Books {artist.businessMeta.bookingLeadTimeDays}+ days ahead
+    <div style={{ padding: '20px', borderTop: '1px solid #1C1C1C' }}>
+      <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#454140', marginBottom: '12px' }}>
+        Choose a date &amp; time
       </p>
+      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '14px' }}>
+        {dates.map((d) => {
+          const isSelected = d.iso === selectedDate;
+          return (
+            <button
+              key={d.iso}
+              onClick={() => onSelectDate(d.iso)}
+              style={{
+                flexShrink: 0,
+                width: '46px',
+                padding: '10px 0',
+                textAlign: 'center',
+                border: `1px solid ${isSelected ? '#C9A96E' : '#1C1C1C'}`,
+                background: isSelected ? '#0D0B08' : 'transparent',
+                cursor: 'pointer',
+                transition: 'border-color 0.2s, background 0.2s',
+              }}
+            >
+              <p style={{ fontSize: '8px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#3A3530', margin: '0 0 4px' }}>{d.weekday}</p>
+              <p style={{ fontSize: '13px', color: isSelected ? '#C9A96E' : '#F0EBE0', margin: 0 }}>{d.day}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      {selectedDate && (
+        <div>
+          {isLoading ? (
+            <p style={{ fontSize: '11px', color: '#3A3530' }}>Checking availability…</p>
+          ) : error ? (
+            <p style={{ fontSize: '11px', color: 'rgba(220,80,80,0.75)' }}>{error}</p>
+          ) : !availability ? null : !availability.configured ? (
+            <p style={{ fontSize: '11px', color: '#3A3530', lineHeight: 1.6 }}>
+              This artist hasn't set up online scheduling yet — booking isn't available right now.
+            </p>
+          ) : availability.isBlocked ? (
+            <p style={{ fontSize: '11px', color: '#3A3530', lineHeight: 1.6 }}>
+              Not taking bookings on this date{availability.blockedReason ? ` — ${availability.blockedReason}` : ''}.
+            </p>
+          ) : !availability.isOpen ? (
+            <p style={{ fontSize: '11px', color: '#3A3530' }}>Closed on this date.</p>
+          ) : availability.slots.length === 0 ? (
+            <p style={{ fontSize: '11px', color: '#3A3530' }}>No slots long enough for {service.name} on this date.</p>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {availability.slots.map((slot) => {
+                const isSelected = slot === selectedSlot;
+                return (
+                  <button
+                    key={slot}
+                    onClick={() => onSelectSlot(slot)}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      border: `1px solid ${isSelected ? '#C9A96E' : '#1C1C1C'}`,
+                      background: isSelected ? '#C9A96E' : 'transparent',
+                      color: isSelected ? '#080808' : '#C8B9A8',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s, color 0.2s, border-color 0.2s',
+                    }}
+                  >
+                    {formatSlotLabel(slot)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -107,7 +231,110 @@ function AddOnCard({ service, quantity, onQuantityChange }: { service: ClientSer
   );
 }
 
-function EstimateBreakdown({ estimate, onRequestBook, isBooking }: { estimate: EstimateResult; onRequestBook: () => void; isBooking?: boolean }) {
+const fieldStyle: CSSProperties = {
+  width: '100%',
+  padding: '10px 12px',
+  fontSize: '12px',
+  background: '#0C0C0C',
+  border: '1px solid #1C1C1C',
+  color: '#F0EBE0',
+  outline: 'none',
+  fontFamily: 'inherit',
+};
+
+function ContactDetailsForm({
+  contactName,
+  onContactNameChange,
+  contactPhone,
+  onContactPhoneChange,
+  contactEmail,
+  onContactEmailChange,
+  customerNotes,
+  onCustomerNotesChange,
+}: {
+  contactName: string;
+  onContactNameChange: (v: string) => void;
+  contactPhone: string;
+  onContactPhoneChange: (v: string) => void;
+  contactEmail: string;
+  onContactEmailChange: (v: string) => void;
+  customerNotes: string;
+  onCustomerNotesChange: (v: string) => void;
+}) {
+  return (
+    <div style={{ marginBottom: '20px' }}>
+      <p style={{ fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', color: '#C9A96E', marginBottom: '12px' }}>Your Details</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <input
+          type="text"
+          placeholder="Full name"
+          value={contactName}
+          onChange={(e) => onContactNameChange(e.target.value)}
+          style={fieldStyle}
+        />
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input
+            type="tel"
+            placeholder="Phone number"
+            value={contactPhone}
+            onChange={(e) => onContactPhoneChange(e.target.value)}
+            style={fieldStyle}
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            value={contactEmail}
+            onChange={(e) => onContactEmailChange(e.target.value)}
+            style={fieldStyle}
+          />
+        </div>
+        <textarea
+          placeholder="Anything the artist should know? (optional)"
+          value={customerNotes}
+          onChange={(e) => onCustomerNotesChange(e.target.value)}
+          rows={2}
+          style={{ ...fieldStyle, resize: 'vertical' }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EstimateBreakdown({
+  estimate,
+  onRequestBook,
+  isBooking,
+  contactName,
+  onContactNameChange,
+  contactPhone,
+  onContactPhoneChange,
+  contactEmail,
+  onContactEmailChange,
+  customerNotes,
+  onCustomerNotesChange,
+  requiresSignIn,
+  canSubmit,
+  submitHint,
+  submitError,
+}: {
+  estimate: EstimateResult;
+  onRequestBook: () => void;
+  isBooking?: boolean;
+  contactName: string;
+  onContactNameChange: (v: string) => void;
+  contactPhone: string;
+  onContactPhoneChange: (v: string) => void;
+  contactEmail: string;
+  onContactEmailChange: (v: string) => void;
+  customerNotes: string;
+  onCustomerNotesChange: (v: string) => void;
+  requiresSignIn: boolean;
+  canSubmit: boolean;
+  submitHint: string | null;
+  submitError: string | null;
+}) {
+  const disabled = Boolean(isBooking) || (!requiresSignIn && !canSubmit);
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
       <p style={{ fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', color: '#C9A96E', marginBottom: '18px' }}>Estimate</p>
@@ -134,6 +361,19 @@ function EstimateBreakdown({ estimate, onRequestBook, isBooking }: { estimate: E
         </div>
       </div>
 
+      {!requiresSignIn && (
+        <ContactDetailsForm
+          contactName={contactName}
+          onContactNameChange={onContactNameChange}
+          contactPhone={contactPhone}
+          onContactPhoneChange={onContactPhoneChange}
+          contactEmail={contactEmail}
+          onContactEmailChange={onContactEmailChange}
+          customerNotes={customerNotes}
+          onCustomerNotesChange={onCustomerNotesChange}
+        />
+      )}
+
       <div style={{ background: '#0C0C0C', border: '1px solid #161412', padding: '12px 14px', marginBottom: '16px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {[
@@ -154,12 +394,25 @@ function EstimateBreakdown({ estimate, onRequestBook, isBooking }: { estimate: E
 
       <button
         onClick={onRequestBook}
-        disabled={isBooking}
-        style={{ width: '100%', padding: '15px 0', fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', fontWeight: 600, background: isBooking ? '#8B6A1A' : '#C9A96E', color: '#080808', border: 'none', cursor: isBooking ? 'not-allowed' : 'pointer', transition: 'background 0.2s', opacity: isBooking ? 0.75 : 1 }}
-        onMouseEnter={e => !isBooking && (e.currentTarget.style.background = '#B8943F')}
-        onMouseLeave={e => !isBooking && (e.currentTarget.style.background = isBooking ? '#8B6A1A' : '#C9A96E')}>
-        {isBooking ? 'Sending request…' : 'Request to Book'}
+        disabled={disabled}
+        style={{ width: '100%', padding: '15px 0', fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', fontWeight: 600, background: disabled && !requiresSignIn ? '#3A3530' : isBooking ? '#8B6A1A' : '#C9A96E', color: '#080808', border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', transition: 'background 0.2s', opacity: disabled && !requiresSignIn ? 0.5 : isBooking ? 0.75 : 1 }}
+        onMouseEnter={e => !disabled && (e.currentTarget.style.background = '#B8943F')}
+        onMouseLeave={e => !disabled && (e.currentTarget.style.background = isBooking ? '#8B6A1A' : '#C9A96E')}>
+        {isBooking ? 'Sending request…' : requiresSignIn ? 'Sign In to Book' : 'Request to Book'}
       </button>
+
+      {!requiresSignIn && submitHint && !isBooking && (
+        <p style={{ textAlign: 'center', fontSize: '10px', color: '#3A3530', marginTop: '10px' }}>{submitHint}</p>
+      )}
+
+      <AnimatePresence>
+        {submitError && (
+          <motion.p key="submit-err" initial={{ opacity: 0, y: -3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(220,80,80,0.75)', marginTop: '10px' }}>
+            {submitError}
+          </motion.p>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -177,8 +430,6 @@ function BookingConfirmation({
   bookingRef: string;
   onClose: () => void;
 }) {
-  const ref = bookingRef || Math.random().toString(36).slice(2, 8).toUpperCase();
-
   return (
     <motion.div
       key="confirmation"
@@ -203,7 +454,7 @@ function BookingConfirmation({
               Booking request sent
             </p>
             <p style={{ fontSize: '11px', color: '#3A3530' }}>
-              Reference <span style={{ fontFamily: '"JetBrains Mono", monospace', color: '#C9A96E' }}>KC-{ref}</span>
+              Reference <span style={{ fontFamily: '"JetBrains Mono", monospace', color: '#C9A96E' }}>{bookingRef}</span>
             </p>
           </div>
         </div>
@@ -230,7 +481,7 @@ function BookingConfirmation({
         </p>
 
         <div style={{ display: 'flex', gap: '10px' }}>
-          <a href="/my-journey"
+          <a href="/journey"
             style={{ flex: 1, display: 'block', padding: '11px 0', textAlign: 'center', fontSize: '9px', letterSpacing: '0.2em', textTransform: 'uppercase', background: '#C9A96E', color: '#080808', textDecoration: 'none', fontWeight: 600 }}>
             My Journey
           </a>
@@ -249,6 +500,9 @@ function BookingConfirmation({
 interface BookingBuilderProps { artist: ArtistProfile; services: ClientService[]; }
 
 export function BookingBuilder({ artist, services }: BookingBuilderProps) {
+  const { data: session } = useSession();
+  const router = useRouter();
+
   const [selectedAnchor, setSelectedAnchor] = useState<ClientService | null>(null);
   const [addOnQuantities, setAddOnQuantities] = useState<Record<string, number>>({});
   const [isCalculating, setIsCalculating] = useState(false);
@@ -257,6 +511,28 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
   const [bookingRef, setBookingRef] = useState<string>('');
   const [isBooking, setIsBooking] = useState(false);
+  const [bookingSubmitError, setBookingSubmitError] = useState<string | null>(null);
+
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<DailyAvailability | null>(null);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [customerNotes, setCustomerNotes] = useState('');
+
+  const idempotencyRef = useRef<{ key: string; signature: string } | null>(null);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    setContactName(prev => prev || session.user?.name || '');
+    setContactEmail(prev => prev || session.user?.email || '');
+  }, [session?.user]);
+
+  const upcomingDates = useMemo(() => nextNDatesUTC(14), []);
 
   const anchorServices = services.filter(s => s.serviceRole === 'anchor' && s.flags.isActive).sort((a, b) => a.checkoutMeta.displayPriority - b.checkoutMeta.displayPriority);
 
@@ -275,12 +551,53 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
     });
   }, [selectedAnchor?._id]);
 
-  const handleAnchorSelect = useCallback((service: ClientService) => { setSelectedAnchor(service); setEstimate(null); }, []);
+  const handleAnchorSelect = useCallback((service: ClientService) => {
+    setSelectedAnchor(service);
+    setEstimate(null);
+    setSelectedDate(null);
+    setSelectedSlot(null);
+    setAvailability(null);
+    setAvailabilityError(null);
+    setBookingSubmitError(null);
+  }, []);
 
   const handleQuantityChange = useCallback((serviceId: string, delta: number, service: ClientService) => {
     setAddOnQuantities(prev => ({ ...prev, [serviceId]: Math.min(service.partyConfig.maxQuantity, Math.max(service.partyConfig.minQuantity, (prev[serviceId] ?? service.partyConfig.defaultQuantity) + delta)) }));
     setEstimate(null);
   }, []);
+
+  const handleSelectDate = useCallback(async (iso: string) => {
+    if (!selectedAnchor) return;
+    setSelectedDate(iso);
+    setSelectedSlot(null);
+    setAvailability(null);
+    setBookingSubmitError(null);
+    setIsLoadingAvailability(true);
+    setAvailabilityError(null);
+    try {
+      const res = await fetch(`/api/vendors/${artist.slug}/availability?date=${iso}&serviceId=${selectedAnchor._id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not check availability.');
+      setAvailability(data as DailyAvailability);
+    } catch (err) {
+      setAvailabilityError(err instanceof Error ? err.message : 'Could not check availability.');
+    } finally {
+      setIsLoadingAvailability(false);
+    }
+  }, [artist.slug, selectedAnchor]);
+
+  const handleSelectSlot = useCallback((slot: string) => {
+    setSelectedSlot(slot);
+    setBookingSubmitError(null);
+  }, []);
+
+  const buildAddOnsPayload = useCallback(
+    () =>
+      addOnServices
+        .filter(s => (addOnQuantities[s._id] ?? 0) > 0)
+        .map(s => ({ serviceId: s._id, quantity: addOnQuantities[s._id] ?? s.partyConfig.defaultQuantity })),
+    [addOnServices, addOnQuantities]
+  );
 
   const handleCalculate = useCallback(async () => {
     if (!selectedAnchor) return;
@@ -291,7 +608,7 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           anchorServiceId: selectedAnchor._id,
-          addOns: addOnServices.filter(s => (addOnQuantities[s._id] ?? 0) > 0).map(s => ({ serviceId: s._id, quantity: addOnQuantities[s._id] ?? s.partyConfig.defaultQuantity })),
+          addOns: buildAddOnsPayload(),
         }),
       });
       const data = await response.json();
@@ -302,12 +619,86 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
     } finally {
       setIsCalculating(false);
     }
-  }, [selectedAnchor, addOnServices, addOnQuantities]);
+  }, [selectedAnchor, buildAddOnsPayload]);
+
+  const getIdempotencyKey = useCallback((signature: string): string => {
+    if (idempotencyRef.current && idempotencyRef.current.signature === signature) {
+      return idempotencyRef.current.key;
+    }
+    const key = crypto.randomUUID();
+    idempotencyRef.current = { key, signature };
+    return key;
+  }, []);
+
+  const trimmedName = contactName.trim();
+  const trimmedPhone = contactPhone.trim();
+  const trimmedEmail = contactEmail.trim();
+  const hasValidSlot = Boolean(selectedDate && selectedSlot && availability?.configured && availability.isOpen && !availability.isBlocked);
+  const canSubmit = hasValidSlot && Boolean(trimmedName) && Boolean(trimmedPhone) && EMAIL_RE.test(trimmedEmail);
+
+  const submitHint = !selectedDate
+    ? 'Choose a date above to continue.'
+    : availability && !availability.configured
+    ? "This artist hasn't set up online scheduling yet — booking isn't available right now."
+    : availability && (availability.isBlocked || !availability.isOpen)
+    ? 'Choose a different date — this one is unavailable.'
+    : !selectedSlot
+    ? 'Select a time above to continue.'
+    : (!trimmedName || !trimmedPhone || !EMAIL_RE.test(trimmedEmail))
+    ? 'Fill in your name, phone, and email to continue.'
+    : null;
+
+  const handleRequestBook = useCallback(async () => {
+    if (!session) {
+      router.push(`/auth?callbackUrl=/artists/${artist.slug}`);
+      return;
+    }
+    if (!selectedAnchor || !estimate || isBooking) return;
+    if (!selectedDate || !selectedSlot) {
+      setBookingSubmitError('Please select a date and time above before requesting to book.');
+      return;
+    }
+    if (!trimmedName || !trimmedPhone || !EMAIL_RE.test(trimmedEmail)) {
+      setBookingSubmitError('Please fill in your name, phone, and a valid email to continue.');
+      return;
+    }
+
+    const addOnsPayload = buildAddOnsPayload();
+    const signature = JSON.stringify({ anchor: selectedAnchor._id, addOns: addOnsPayload, date: selectedDate, slot: selectedSlot });
+    const idempotencyKey = getIdempotencyKey(signature);
+
+    setIsBooking(true);
+    setBookingSubmitError(null);
+    try {
+      const res = await fetch('/api/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artistSlug: artist.slug,
+          anchorServiceId: selectedAnchor._id,
+          addOns: addOnsPayload,
+          date: selectedDate,
+          slotStart: selectedSlot,
+          contactInfo: { name: trimmedName, phone: trimmedPhone, email: trimmedEmail },
+          customerNotes: customerNotes.trim() || undefined,
+          idempotencyKey,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.bookingId) {
+        throw new Error(data.error ?? 'Something went wrong. Please try again.');
+      }
+      setBookingRef(data.ref);
+      setBookingConfirmed(true);
+    } catch (err) {
+      setBookingSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally {
+      setIsBooking(false);
+    }
+  }, [session, router, artist.slug, selectedAnchor, estimate, isBooking, selectedDate, selectedSlot, trimmedName, trimmedPhone, trimmedEmail, customerNotes, buildAddOnsPayload, getIdempotencyKey]);
 
   return (
     <div style={{ border: '1px solid #1C1C1C', overflow: 'hidden', background: '#0A0A0A' }}>
-      <LeadTimeBanner artist={artist} />
-
       <div style={{ padding: '20px 20px 0', borderBottom: '1px solid #1C1C1C', paddingBottom: '20px' }}>
         <p style={{ fontSize: '10px', letterSpacing: '0.26em', textTransform: 'uppercase', color: '#C9A96E', marginBottom: '4px' }}>Book</p>
         <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: '1.2rem', color: '#F0EBE0', margin: '0 0 4px', fontWeight: 400 }}>{artist.name}</h3>
@@ -334,6 +725,24 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
                 {addOnServices.map(s => <AddOnCard key={s._id} service={s} quantity={addOnQuantities[s._id] ?? s.partyConfig.defaultQuantity} onQuantityChange={d => handleQuantityChange(s._id, d, s)} />)}
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedAnchor && (
+          <motion.div key="date-picker" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.4 }} style={{ overflow: 'hidden' }}>
+            <DateSlotPicker
+              service={selectedAnchor}
+              dates={upcomingDates}
+              selectedDate={selectedDate}
+              onSelectDate={handleSelectDate}
+              availability={availability}
+              isLoading={isLoadingAvailability}
+              error={availabilityError}
+              selectedSlot={selectedSlot}
+              onSelectSlot={handleSelectSlot}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -367,31 +776,23 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
         {estimate && (
           <motion.div key="estimate" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.45 }} style={{ overflow: 'hidden' }}>
             <div style={{ borderTop: '1px solid #1C1C1C', padding: '20px', background: '#0D0B09' }}>
-              <EstimateBreakdown estimate={estimate} isBooking={isBooking} onRequestBook={async () => {
-                if (!selectedAnchor || !estimate || isBooking) return;
-                setIsBooking(true);
-                try {
-                  const res = await fetch('/api/book', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      artistSlug: artist.slug,
-                      artistName: artist.name,
-                      anchorServiceName: selectedAnchor.name,
-                      lineItems: estimate.lineItems,
-                      totalINR: estimate.total,
-                      depositINR: estimate.depositAmount,
-                    }),
-                  });
-                  const data = await res.json();
-                  setBookingRef(data.ref ?? 'KC-' + Math.random().toString(36).slice(2,8).toUpperCase());
-                } catch {
-                  setBookingRef('KC-' + Math.random().toString(36).slice(2,8).toUpperCase());
-                } finally {
-                  setIsBooking(false);
-                  setBookingConfirmed(true);
-                }
-              }} />
+              <EstimateBreakdown
+                estimate={estimate}
+                isBooking={isBooking}
+                onRequestBook={handleRequestBook}
+                contactName={contactName}
+                onContactNameChange={setContactName}
+                contactPhone={contactPhone}
+                onContactPhoneChange={setContactPhone}
+                contactEmail={contactEmail}
+                onContactEmailChange={setContactEmail}
+                customerNotes={customerNotes}
+                onCustomerNotesChange={setCustomerNotes}
+                requiresSignIn={!session}
+                canSubmit={canSubmit}
+                submitHint={submitHint}
+                submitError={bookingSubmitError}
+              />
             </div>
           </motion.div>
         )}
@@ -410,6 +811,13 @@ export function BookingBuilder({ artist, services }: BookingBuilderProps) {
               setEstimate(null);
               setSelectedAnchor(null);
               setAddOnQuantities({});
+              setSelectedDate(null);
+              setSelectedSlot(null);
+              setAvailability(null);
+              setAvailabilityError(null);
+              setBookingSubmitError(null);
+              setBookingRef('');
+              idempotencyRef.current = null;
             }}
           />
         )}

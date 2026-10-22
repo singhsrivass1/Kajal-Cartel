@@ -5,7 +5,7 @@ import { Providers } from "@/components/Providers"; // Ensure this path matches 
 
 export const metadata: Metadata = {
   title: "Kajal Cartel",
-  description: "AI-Powered Bridal Discovery Platform",
+  description: "Bridal Beauty, Curated",
 };
 
 export default function RootLayout({

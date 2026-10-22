@@ -6,9 +6,9 @@ import type { MatchResult } from '@/types/match';
 
 const FONT_DISPLAY = '"Cormorant Garamond", "Cormorant", Georgia, serif';
 
-interface VendorGridProps { matches: MatchResult[]; }
+interface VendorGridProps { matches: MatchResult[]; showScore?: boolean; showTags?: boolean; }
 
-export function VendorGrid({ matches }: VendorGridProps) {
+export function VendorGrid({ matches, showScore = true, showTags = true }: VendorGridProps) {
   if (!matches.length) {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45 }}
@@ -36,7 +36,7 @@ export function VendorGrid({ matches }: VendorGridProps) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
         {matches.map((match, index) => (
-          <VendorCard key={match.vendor._id} match={match} rank={index + 1} index={index} />
+          <VendorCard key={match.vendor._id} match={match} rank={index + 1} index={index} showScore={showScore} showTags={showTags} />
         ))}
       </div>
     </div>

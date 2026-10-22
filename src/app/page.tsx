@@ -7,8 +7,8 @@ import { HomepageClient } from './_components/HomepageClient';
 import type { ClientVendor } from '@/types/match';
 
 export const metadata: Metadata = {
-  title: 'Kajal Cartel — AI-Powered Bridal Beauty Discovery, New Delhi',
-  description: 'Find your perfect Delhi bridal artist using AI mood board matching.',
+  title: 'Kajal Cartel — Bridal Beauty Discovery, New Delhi',
+  description: 'Find your perfect Delhi bridal artist. Show us your aesthetic vision and discover artists curated to your style.',
 };
 
 function serializeVendor(v: any): ClientVendor {

@@ -587,10 +587,13 @@ const VendorSchema = new Schema<IVendor>(
       trim: true,
       maxlength: 800,
     },
+    // Not required at the schema level for the same reason as `portfolio` below:
+    // a draft vendor is created before its imagery exists. Presence is enforced
+    // in VendorAdminManager at activation time.
     profileImageUrl: {
       type: String,
-      required: true,
       trim: true,
+      default: '',
     },
     location: {
       type: LocationSchema,
@@ -616,10 +619,10 @@ const VendorSchema = new Schema<IVendor>(
       type: [PortfolioItemSchema],
       required: true,
       validate: [
-        {
-          validator: (items: IPortfolioItem[]) => items.length >= 4,
-          message: 'A vendor portfolio must contain at least 4 images',
-        },
+        // The "at least 4 images" rule is a publishing-quality gate, not a structural
+        // one — enforcing it here would make it impossible to create a draft vendor
+        // before uploading its images. It is enforced in VendorAdminManager at the
+        // point of activation instead, so a vendor can never go live under-filled.
         {
           validator: (items: IPortfolioItem[]) => items.length <= 20,
           message: 'A vendor portfolio cannot exceed 20 images',

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Types } from 'mongoose';
 import { dbConnect } from '@/lib/db/connect';
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 import {
   calculateBookingEstimate,
   EstimateValidationError,
@@ -83,6 +84,9 @@ function validatePayload(body: unknown): BookingEstimateRequest {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const limited = enforceRateLimit(request, 'estimate', RATE_LIMITS.estimate);
+  if (limited) return limited;
+
   let body: unknown;
 
   try {

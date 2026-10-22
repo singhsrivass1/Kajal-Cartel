@@ -18,7 +18,7 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const MAX_BYTES = 10 * 1024 * 1024;
 
 const LUXURY_ERROR =
-  'The Kajal Cartel AI is currently styling an unprecedented number of brides. Please try your upload again in a few moments.';
+  'Kajal Cartel is currently styling an unprecedented number of brides. Please try your upload again in a few moments.';
 
 const PROCESSING_STEPS = [
   'Reading skin architecture',
@@ -642,7 +642,7 @@ function FullSuccessView({
 
 
 interface MoodBoardWidgetProps {
-  onMatchSuccess?: (data: MatchResponse) => void;
+  onMatchSuccess?: (data: MatchResponse, image: { base64: string; mimeType: string }) => void;
 }
 
 export function MoodBoardWidget({ onMatchSuccess }: MoodBoardWidgetProps) {
@@ -723,7 +723,7 @@ export function MoodBoardWidget({ onMatchSuccess }: MoodBoardWidgetProps) {
         const matchResponse = data as MatchResponse;
         setMatchData(matchResponse);
         setWidgetState('success');
-        onMatchSuccess?.(matchResponse);
+        onMatchSuccess?.(matchResponse, { base64: imageBase64, mimeType: file.type });
       } catch (err) {
         const message =
           err instanceof Error ? err.message : LUXURY_ERROR;

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { dbConnect } from '@/lib/db/connect';
-import Vendor from '@/lib/db/models/Vendor';
+import { generateWithFallbacks } from '@/lib/ai/gemini';
+import { fetchActiveRosterVendors, formatRosterBrief } from '@/lib/ai/rosterBrief';
+import { serializeClientVendor } from '@/lib/db/serializers/clientVendor';
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 import type {
-  ClientVendor,
   MatchResult,
   ImageProfile,
   StyleDNAEntry,
@@ -16,16 +17,11 @@ export const runtime = 'nodejs';
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
-const FALLBACK_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
-] as const;
-
-const MASTER_PROMPT = `You are the elite Artistic Director for Kajal Cartel, Delhi's most exclusive bridal beauty platform. Your task is to analyze an uploaded image like a Vogue Beauty Editor.
+function buildMasterPrompt(rosterBrief: string): string {
+  return `You are the elite Artistic Director for Kajal Cartel, Delhi's most exclusive bridal beauty platform. Your task is to analyze an uploaded image like a Vogue Beauty Editor.
 
 STEP 1: THE RELEVANCE GATEKEEPER
-First, determine if the image is relevant. It must contain a face, makeup, jewelry, bridal wear, or clear aesthetic fashion elements. 
+First, determine if the image is relevant. It must contain a face, makeup, jewelry, bridal wear, or clear aesthetic fashion elements.
 If the image is completely irrelevant (e.g., a car, an animal, a blank screen, food), you MUST abort analysis and return this exact JSON structure:
 {
   "isBridalContext": false,
@@ -42,14 +38,7 @@ If the image IS relevant ("isBridalContext": true), examine three dimensions pre
 
 STEP 3: THE MATCHING PROTOCOL
 Match the image's aesthetic to EXACTLY THREE artists from our official roster below. You MUST ONLY use the exact slugs provided here:
-1. slug: "studio-noor" — Botanical multi-session skin prep, no-makeup satin finish, mogra hairline. Quiet luxury. Sabyasachi minimalist.
-2. slug: "meher-atelier" — Mughlai kohl to orbital bone, gold passa structure, mogra braid, luminous matte airbrush. Heritage sovereign.
-3. slug: "studio-aara" — Korean twelve-step glass skin protocol, zero-powder dewy base, photography-optimised. Contemporary editorial.
-4. slug: "priya-bhandari-artistry" — Cinematic dual-tone cut crease, plum-to-nude lip gradient, champagne brow bone highlight. Bollywood editorial.
-5. slug: "the-riya-edit" — Old-money restraint, single precise liner stroke, structured silk-press blowout. South Delhi couture.
-6. slug: "kamakshi-and-co" — Punjabi grandeur, dual-layer airbrush, vivid cut crease, gajra crown, maximum outdoor durability.
-7. slug: "safiya-studio" — Angular single-stroke graphic liner, glass skin base, architectural updo. Fashion-forward editorial.
-8. slug: "the-malviya-bride" — Triple-coat kohl, ceremonial sindoor placement, mogra braid, gold passa. Ancestral Old Delhi traditional.
+${rosterBrief}
 
 STEP 4: OUTPUT CONSTRAINTS
 Output ONLY a raw, minified JSON object. Do NOT wrap the JSON in markdown code blocks (e.g., \`\`\`json). Do not include any conversational text.
@@ -68,37 +57,6 @@ Output ONLY a raw, minified JSON object. Do NOT wrap the JSON in markdown code b
     }
   ]
 }`;
-
-async function generateWithFallbacks(
-  imageBase64: string,
-  mimeType: string,
-  apiKey: string
-): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-
-  const imagePart = {
-    inlineData: { data: imageBase64, mimeType },
-  };
-
-  let lastError: unknown;
-
-  for (const modelId of FALLBACK_MODELS) {
-    try {
-      console.info(`[/api/match] Attempting model: ${modelId}`);
-      const model = genAI.getGenerativeModel({ model: modelId });
-      const result = await model.generateContent([imagePart, { text: MASTER_PROMPT }]);
-      const text = result.response.text();
-      if (!text || !text.trim()) throw new Error(`Empty response from ${modelId}`);
-      console.info(`[/api/match] Success with model: ${modelId}`);
-      return text;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[/api/match] ${modelId} failed — ${msg}. Trying next fallback.`);
-      lastError = err;
-    }
-  }
-
-  throw lastError ?? new Error('All models in the fallback cascade failed.');
 }
 
 function parseAIResponse(raw: string): {
@@ -124,45 +82,6 @@ function parseAIResponse(raw: string): {
   return parsed;
 }
 
-function serializeVendor(v: Record<string, any>): ClientVendor {
-  return {
-    _id: v._id.toString(),
-    name: v.name,
-    slug: v.slug,
-    tagline: v.tagline,
-    profileImageUrl: v.profileImageUrl,
-    location: {
-      microLocation: v.location?.microLocation ?? '',
-      city: v.location?.city ?? 'New Delhi',
-      travelPolicy: v.location?.travelPolicy ?? 'all',
-    },
-    pricing: {
-      tier: v.pricing?.tier ?? 'premium',
-      startingFromINR: v.pricing?.startingFromINR ?? 0,
-    },
-    ratings: {
-      averageRating: v.ratings?.averageRating ?? 0,
-      totalReviews: v.ratings?.totalReviews ?? 0,
-    },
-    flags: {
-      badgeType: v.flags?.badgeType ?? null,
-      isVerified: v.flags?.isVerified ?? false,
-      isFeatured: v.flags?.isFeatured ?? false,
-    },
-    aestheticProfile: {
-      styleArchetypes: v.aestheticProfile?.styleArchetypes ?? [],
-      signatureElements: v.aestheticProfile?.signatureElements,
-    },
-    serviceSummary: {
-      serviceCount: v.serviceSummary?.serviceCount ?? 0,
-      anchorServiceCount: v.serviceSummary?.anchorServiceCount ?? 0,
-      priceRangeINR: v.serviceSummary?.priceRangeINR ?? { min: 0, max: 0 },
-      occasionCoverage: v.serviceSummary?.occasionCoverage ?? [],
-      hasTrialOffering: v.serviceSummary?.hasTrialOffering ?? false,
-    },
-  };
-}
-
 export async function POST(request: Request): Promise<NextResponse> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -171,6 +90,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       { status: 500 }
     );
   }
+
+  // This route is intentionally anonymous (no auth wall on discovery), and it makes
+  // the most expensive call in the app — a vision-model request. Rate limiting is
+  // the only thing standing between an open endpoint and unbounded API spend.
+  const limited = enforceRateLimit(request, 'match', RATE_LIMITS.match, {
+    message: 'You have analysed several photos recently. Please wait a little while before trying another.',
+  });
+  if (limited) return limited;
 
   let body: unknown;
   try {
@@ -207,20 +134,39 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Image must be under 10MB.' }, { status: 400 });
   }
 
+  let activeVendors: Array<Record<string, any>>;
+  try {
+    await dbConnect();
+    activeVendors = await fetchActiveRosterVendors();
+  } catch (err) {
+    console.error('[/api/match] DB connection failed:', err);
+    return NextResponse.json(
+      { error: 'Database connection failed. Please try again.' },
+      { status: 500 }
+    );
+  }
+
+  if (activeVendors.length === 0) {
+    console.error('[/api/match] No active vendors — cannot build a roster to match against.');
+    return NextResponse.json(
+      { error: 'No artists are currently available for matching. Please try again later.' },
+      { status: 503 }
+    );
+  }
+
+  const masterPrompt = buildMasterPrompt(formatRosterBrief(activeVendors));
+
   let rawAI: string;
   try {
-    rawAI = await generateWithFallbacks(
-      raw.imageBase64 as string,
-      raw.mimeType as string,
-      apiKey
-    );
+    const imagePart = { inlineData: { data: raw.imageBase64 as string, mimeType: raw.mimeType as string } };
+    rawAI = await generateWithFallbacks([imagePart, { text: masterPrompt }], apiKey, '[/api/match]');
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[/api/match] All fallback models failed:', msg);
     return NextResponse.json(
       {
         error:
-          'The Kajal Cartel AI is currently styling an unprecedented number of brides. Please try your upload again in a few moments.',
+          'Kajal Cartel is currently styling an unprecedented number of brides. Please try your upload again in a few moments.',
       },
       { status: 500 }
     );
@@ -234,7 +180,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json(
       {
         error:
-          'The Kajal Cartel AI is currently styling an unprecedented number of brides. Please try your upload again in a few moments.',
+          'Kajal Cartel is currently styling an unprecedented number of brides. Please try your upload again in a few moments.',
       },
       { status: 500 }
     );
@@ -250,16 +196,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  try {
-    await dbConnect();
-  } catch (err) {
-    console.error('[/api/match] DB connection failed:', err);
-    return NextResponse.json(
-      { error: 'Database connection failed. Please try again.' },
-      { status: 500 }
-    );
-  }
-
   const validSlugs = parsed.matches
     .map((m) => m.artistSlug)
     .filter((s) => typeof s === 'string' && s.length > 0);
@@ -271,12 +207,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const vendorDocs = await Vendor.find({
-    slug: { $in: validSlugs },
-    'flags.isActive': true,
-  }).lean<Record<string, any>[]>();
-
-  const vendorMap = new Map(vendorDocs.map((v) => [v.slug, v]));
+  // Hydrate straight from the roster we already fetched — the vendors Gemini could
+  // have picked from and the vendors eligible to be hydrated are the same active set,
+  // so there's no need for a second DB round-trip here.
+  const vendorMap = new Map(activeVendors.map((v) => [v.slug, v]));
 
   const matches: MatchResult[] = [];
   for (const aiMatch of parsed.matches) {
@@ -286,7 +220,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       continue;
     }
     matches.push({
-      vendor: serializeVendor(vendorDoc),
+      vendor: serializeClientVendor(vendorDoc),
       matchedTags: parsed.styleDNA.map((d) => d.label),
       confidenceScore: Math.min(1, Math.max(0, Number(aiMatch.confidenceScore))),
       matchRationale: aiMatch.rationale,

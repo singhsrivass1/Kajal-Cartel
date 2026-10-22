@@ -27,9 +27,9 @@ function matchLabel(score: number): { label: string; color: string } {
   return { label: 'Match', color: '#6A5A46' };
 }
 
-interface VendorCardProps { match: MatchResult; rank: number; index: number; }
+interface VendorCardProps { match: MatchResult; rank: number; index: number; showScore?: boolean; showTags?: boolean; }
 
-export function VendorCard({ match, rank, index }: VendorCardProps) {
+export function VendorCard({ match, rank, index, showScore = true, showTags = true }: VendorCardProps) {
   const { vendor, matchedTags, confidenceScore, matchRationale } = match;
   const badge = vendor.flags.badgeType ? BADGE_CONFIG[vendor.flags.badgeType] : null;
   const isTop = rank === 1;
@@ -62,11 +62,13 @@ export function VendorCard({ match, rank, index }: VendorCardProps) {
           </div>
         )}
 
-        <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
-          <span style={{ display: 'block', padding: '4px 10px', fontSize: '10px', color: mColor, background: 'rgba(8,8,8,0.75)', backdropFilter: 'blur(6px)', letterSpacing: '0.04em', fontFamily: '"JetBrains Mono", monospace' }}>
-            {pct}%
-          </span>
-        </div>
+        {showScore && (
+          <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
+            <span style={{ display: 'block', padding: '4px 10px', fontSize: '10px', color: mColor, background: 'rgba(8,8,8,0.75)', backdropFilter: 'blur(6px)', letterSpacing: '0.04em', fontFamily: '"JetBrains Mono", monospace' }}>
+              {pct}%
+            </span>
+          </div>
+        )}
 
         {isTop && (
           <div style={{ position: 'absolute', bottom: '10px', left: '14px' }}>
@@ -97,7 +99,7 @@ export function VendorCard({ match, rank, index }: VendorCardProps) {
           {matchRationale}
         </p>
 
-        {matchedTags.length > 0 && (
+        {showTags && matchedTags.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
             {matchedTags.slice(0, 3).map(tag => (
               <span key={tag} style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#3A3530', border: '1px solid #1C1C1C', padding: '2px 8px' }}>

@@ -21,7 +21,7 @@ function Header() {
       <nav className="flex gap-6 text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-[#F0EBE0]">
         <Link href="/discover" className="hover:text-[#C9A96E] transition-colors">Discover</Link>
         <Link href="/discover#roster" className="hover:text-[#C9A96E] transition-colors">Roster</Link>
-        <Link href="/my-journey" className="hover:text-[#C9A96E] transition-colors">My Journey</Link>
+        <Link href="/journey" className="hover:text-[#C9A96E] transition-colors">My Journey</Link>
         <Link href="/auth" className="hover:text-[#C9A96E] transition-colors">Sign In</Link>
       </nav>
     </header>
@@ -76,7 +76,7 @@ function ExperienceAndReviews() {
   const reviews = [
     {
       name: "Ananya S.",
-      text: "I was so scared of getting that typical cakey bridal makeup. I uploaded a picture of Alia Bhatt's wedding look, and the AI matched me with an artist who actually understood what 'glass skin' meant. Obsessed."
+      text: "I was so scared of getting that typical cakey bridal makeup. I uploaded a picture of Alia Bhatt's wedding look, and it matched me with an artist who actually understood what 'glass skin' meant. Obsessed."
     },
     {
       name: "Kritika M.",
@@ -163,7 +163,7 @@ function RosterSection({ vendors }: { vendors: ClientVendor[] }) {
 function Footer() {
   return (
     <footer className="border-t border-[#141210] py-12 bg-[#0A0A0A] flex items-center justify-center">
-      <p className="text-[8px] tracking-[0.3em] uppercase text-[#454140]">AI-Powered Bridal Discovery · New Delhi</p>
+      <p className="text-[8px] tracking-[0.3em] uppercase text-[#454140]">Bridal Beauty, Curated · New Delhi</p>
     </footer>
   );
 }

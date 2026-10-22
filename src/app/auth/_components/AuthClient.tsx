@@ -2,23 +2,60 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { signIn } from 'next-auth/react'; 
+import { signIn } from 'next-auth/react';
+import { toSafeCallbackPath } from '@/lib/auth/callbackUrl';
 
 const FONT_DISPLAY = '"Cormorant Garamond", "Cormorant", Georgia, serif';
 
 type AuthMode = 'signin' | 'signup';
-type AuthStep = 'entry' | 'email_sent';
+type AuthStep = 'entry' | 'forgot' | 'forgot_sent' | 'signup_sent';
 
+type AuthNotice = { tone: 'success' | 'error'; text: string };
 
-function SocialButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
+const AUTH_NOTICES = {
+  verified: { tone: 'success', text: 'Your email is confirmed. Sign in with your email and password.' },
+  verificationFailed: {
+    tone: 'error',
+    text: 'That confirmation link is invalid or has expired, or it was opened in a different browser from the one used to sign up. Please sign up again.',
+  },
+  verificationUnavailable: { tone: 'error', text: 'Email sign-up is not available right now. Please continue with Google.' },
+  accessDenied: { tone: 'error', text: 'Google sign-in requires a Google account with a verified email address.' },
+} satisfies Record<string, AuthNotice>;
+
+function noticeFromParams(params: { get(name: string): string | null }): AuthNotice | null {
+  if (params.get('error') === 'AccessDenied') return AUTH_NOTICES.accessDenied;
+  const verification = params.get('verification');
+  if (verification === 'failed') return AUTH_NOTICES.verificationFailed;
+  if (verification === 'unavailable') return AUTH_NOTICES.verificationUnavailable;
+  if (params.get('verified') === '1') return AUTH_NOTICES.verified;
+  return null;
+}
+
+function signupErrorMessage(status: number): string {
+  if (status === 503) return 'Email sign-up is not available right now. Please continue with Google.';
+  if (status === 429) return 'Too many sign-up attempts. Please wait a while and try again.';
+  if (status === 400) return 'Please check your name, email, and password and try again.';
+  return 'Something went wrong. Please try again.';
+}
+
+function resetErrorMessage(status: number): string {
+  if (status === 503) return 'Password reset is not available right now. Please continue with Google.';
+  if (status === 429) return 'Too many reset requests. Please wait a while and try again.';
+  if (status === 400) return 'Please enter a valid email address.';
+  return 'Something went wrong. Please try again.';
+}
+
+function SocialButton({ icon, label, onClick, disabled }: { icon: React.ReactNode; label: string; onClick?: () => void; disabled?: boolean }) {
   const [hover, setHover] = useState(false);
   return (
-    <button 
+    <button
       onClick={onClick}
-      onMouseEnter={() => setHover(true)} 
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ width: '100%', padding: '13px 16px', background: 'none', border: `1px solid ${hover ? '#2D2418' : '#1C1C1C'}`, color: hover ? '#F0EBE0' : '#6A5A50', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'flex-start', justifyContent: 'center', gap: '12px', transition: 'border-color 0.2s, color 0.2s', letterSpacing: '0.02em' }}
+      style={{ width: '100%', padding: '13px 16px', background: 'none', border: `1px solid ${hover ? '#2D2418' : '#1C1C1C'}`, color: hover ? '#F0EBE0' : '#6A5A50', fontSize: '13px', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyItems: 'flex-start', justifyContent: 'center', gap: '12px', transition: 'border-color 0.2s, color 0.2s', letterSpacing: '0.02em' }}
     >
       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {icon}
@@ -37,37 +74,121 @@ const GoogleIcon = (
   </svg>
 );
 
-const AppleIcon = (
-  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.74.83 0 2.04-.84 3.65-.7-1.47 2.4-1.04 4.88 1.1 5.92-1.2 2.58-2.67 5.25-5.32 5.3M12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25"/>
-  </svg>
-);
+function TextField({ label, type, value, onChange, error, autoComplete }: { label: string; type: string; value: string; onChange: (v: string) => void; error?: boolean; autoComplete?: string }) {
+  return (
+    <input
+      type={type}
+      value={value}
+      placeholder={label}
+      autoComplete={autoComplete}
+      onChange={e => onChange(e.target.value)}
+      style={{ width: '100%', padding: '13px 14px', background: '#0C0C0C', border: `1px solid ${error ? 'rgba(220,80,80,0.45)' : '#1C1C1C'}`, color: '#F0EBE0', fontSize: '14px', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s' }}
+      onFocus={e => (e.currentTarget.style.borderColor = '#C9A96E')}
+      onBlur={e => (e.currentTarget.style.borderColor = error ? 'rgba(220,80,80,0.45)' : '#1C1C1C')}
+    />
+  );
+}
 
 export function AuthClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = toSafeCallbackPath(searchParams.get('callbackUrl'));
+  const notice = noticeFromParams(searchParams);
+
   const [mode, setMode] = useState<AuthMode>('signin');
   const [step, setStep] = useState<AuthStep>('entry');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [emailError, setEmailError] = useState('');
+  const [password, setPassword] = useState('');
+  const [formError, setFormError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      await signIn('google', { callbackUrl: '/journey' });
+      await signIn('google', { callbackUrl });
     } catch (error) {
       console.error('Google sign-in error:', error);
       setIsLoading(false);
     }
   };
 
-  const handleEmailSubmit = async () => {
-    if (!email || !email.includes('@')) { setEmailError('Please enter a valid email address.'); return; }
-    setEmailError('');
+  const handleCredentialsSubmit = async () => {
+    setFormError('');
+
+    if (!email || !email.includes('@')) {
+      setFormError('Please enter a valid email address.');
+      return;
+    }
+    if (!password || password.length < 8) {
+      setFormError('Password must be at least 8 characters.');
+      return;
+    }
+    if (mode === 'signup' && !name.trim()) {
+      setFormError('Please enter your name.');
+      return;
+    }
+
     setIsLoading(true);
-    await new Promise(r => setTimeout(r, 1100));
-    setIsLoading(false);
-    setStep('email_sent');
+
+    try {
+      if (mode === 'signup') {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password }),
+        });
+        if (!res.ok) {
+          setFormError(signupErrorMessage(res.status));
+          setIsLoading(false);
+          return;
+        }
+        setPassword('');
+        setStep('signup_sent');
+        setIsLoading(false);
+        return;
+      }
+
+      const result = await signIn('credentials', { redirect: false, email, password, callbackUrl });
+
+      if (result?.error) {
+        setFormError('Incorrect email or password.');
+        setIsLoading(false);
+        return;
+      }
+
+      router.push(callbackUrl);
+    } catch (error) {
+      console.error('Credentials auth error:', error);
+      setFormError('Something went wrong. Please try again.');
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotSubmit = async () => {
+    setFormError('');
+    if (!email || !email.includes('@')) {
+      setFormError('Please enter a valid email address.');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) {
+        setFormError(resetErrorMessage(res.status));
+        return;
+      }
+      setStep('forgot_sent');
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      setFormError('Something went wrong. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -93,6 +214,11 @@ export function AuthClient() {
           <AnimatePresence mode="wait">
             {step === 'entry' ? (
               <motion.div key="entry" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4 }}>
+                {notice && (
+                  <p role={notice.tone === 'error' ? 'alert' : 'status'} style={{ fontSize: '11px', lineHeight: 1.6, color: notice.tone === 'error' ? 'rgba(220,80,80,0.7)' : '#5A8A5A', marginBottom: '20px' }}>
+                    {notice.text}
+                  </p>
+                )}
                 <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: '2.2rem', color: '#F0EBE0', fontWeight: 400, marginBottom: '10px' }}>
                   {mode === 'signin' ? 'Welcome back.' : 'Join Kajal Cartel.'}
                 </h1>
@@ -103,13 +229,12 @@ export function AuthClient() {
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '28px' }}>
-                  {}
-                  <SocialButton 
-                    icon={GoogleIcon} 
-                    label="Continue with Google" 
-                    onClick={handleGoogleSignIn} 
+                  <SocialButton
+                    icon={GoogleIcon}
+                    label="Continue with Google"
+                    onClick={handleGoogleSignIn}
+                    disabled={isLoading}
                   />
-                  <SocialButton icon={AppleIcon} label="Continue with Apple" />
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '28px' }}>
@@ -118,49 +243,97 @@ export function AuthClient() {
                   <div style={{ flex: 1, height: '1px', background: '#1A1A1A' }} />
                 </div>
 
-                <div style={{ marginBottom: '14px' }}>
-                  <input type="email" value={email} placeholder="your@email.com"
-                    onChange={e => { setEmail(e.target.value); setEmailError(''); }}
-                    onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()}
-                    style={{ width: '100%', padding: '13px 14px', background: '#0C0C0C', border: `1px solid ${emailError ? 'rgba(220,80,80,0.45)' : '#1C1C1C'}`, color: '#F0EBE0', fontSize: '14px', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s' }}
-                    onFocus={e => (e.currentTarget.style.borderColor = '#C9A96E')}
-                    onBlur={e => (e.currentTarget.style.borderColor = emailError ? 'rgba(220,80,80,0.45)' : '#1C1C1C')} />
-                  {emailError && <p style={{ fontSize: '11px', color: 'rgba(220,80,80,0.7)', marginTop: '6px' }}>{emailError}</p>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '10px' }}>
+                  {mode === 'signup' && (
+                    <TextField label="Full name" type="text" value={name} onChange={setName} autoComplete="name" />
+                  )}
+                  <TextField label="your@email.com" type="email" value={email} onChange={setEmail} autoComplete="email" />
+                  <TextField
+                    label="Password"
+                    type="password"
+                    value={password}
+                    onChange={setPassword}
+                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                  />
                 </div>
 
-                <button onClick={handleEmailSubmit} disabled={isLoading}
+                {mode === 'signin' && (
+                  <div style={{ textAlign: 'right', marginBottom: '14px' }}>
+                    <button
+                      onClick={() => { setFormError(''); setStep('forgot'); }}
+                      style={{ background: 'none', border: 'none', fontSize: '11px', color: '#3A3530', cursor: 'pointer', padding: 0 }}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#C9A96E')}
+                      onMouseLeave={e => (e.currentTarget.style.color = '#3A3530')}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+
+                {formError && <p style={{ fontSize: '11px', color: 'rgba(220,80,80,0.7)', marginBottom: '14px' }}>{formError}</p>}
+
+                <button onClick={handleCredentialsSubmit} disabled={isLoading}
                   style={{ width: '100%', padding: '14px', fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', fontWeight: 600, background: isLoading ? '#8B6A1A' : '#C9A96E', color: '#080808', border: 'none', cursor: isLoading ? 'not-allowed' : 'pointer', transition: 'background 0.2s' }}
                   onMouseEnter={e => !isLoading && (e.currentTarget.style.background = '#B8943F')}
                   onMouseLeave={e => !isLoading && (e.currentTarget.style.background = '#C9A96E')}>
-                  {isLoading ? 'Sending link…' : mode === 'signin' ? 'Send sign-in link' : 'Create account'}
+                  {isLoading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
                 </button>
 
                 <p style={{ fontSize: '12px', color: '#3A3530', textAlign: 'center', marginTop: '24px' }}>
                   {mode === 'signin' ? "New here? " : 'Have an account? '}
-                  <button onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
+                  <button onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setFormError(''); }}
                     style={{ background: 'none', border: 'none', fontSize: '12px', color: '#C9A96E', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
                     {mode === 'signin' ? 'Create an account' : 'Sign in'}
                   </button>
                 </p>
               </motion.div>
+            ) : step === 'forgot' ? (
+              <motion.div key="forgot" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4 }}>
+                <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: '2.2rem', color: '#F0EBE0', fontWeight: 400, marginBottom: '10px' }}>
+                  Reset your password.
+                </h1>
+                <p style={{ fontSize: '13px', color: '#5A5450', lineHeight: 1.7, marginBottom: '32px' }}>
+                  Enter your email and we'll send you a link to reset your password.
+                </p>
+
+                <div style={{ marginBottom: '14px' }}>
+                  <TextField label="your@email.com" type="email" value={email} onChange={setEmail} autoComplete="email" />
+                </div>
+
+                {formError && <p style={{ fontSize: '11px', color: 'rgba(220,80,80,0.7)', marginBottom: '14px' }}>{formError}</p>}
+
+                <button onClick={handleForgotSubmit} disabled={isLoading}
+                  style={{ width: '100%', padding: '14px', fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', fontWeight: 600, background: isLoading ? '#8B6A1A' : '#C9A96E', color: '#080808', border: 'none', cursor: isLoading ? 'not-allowed' : 'pointer', transition: 'background 0.2s' }}>
+                  {isLoading ? 'Sending…' : 'Send reset link'}
+                </button>
+
+                <button onClick={() => { setFormError(''); setStep('entry'); }}
+                  style={{ display: 'block', margin: '24px auto 0', background: 'none', border: 'none', fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#4A4440', cursor: 'pointer', padding: 0 }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#C9A96E')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#4A4440')}>
+                  ← Back to sign in
+                </button>
+              </motion.div>
             ) : (
-              <motion.div key="sent" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+              <motion.div key={step} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
                 <div style={{ width: '40px', height: '40px', border: '1px solid #C9A96E', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '28px' }}>
                   <span style={{ color: '#C9A96E', fontSize: '17px' }}>✉</span>
                 </div>
                 <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: '2rem', color: '#F0EBE0', fontWeight: 400, marginBottom: '12px' }}>Check your email.</h1>
                 <p style={{ fontSize: '13px', color: '#5A5450', lineHeight: 1.7, marginBottom: '8px' }}>
-                  We've sent a sign-in link to
+                  {step === 'signup_sent' ? 'If this email can be used, a confirmation link is on its way to' : 'If an account exists for'}
                 </p>
                 <p style={{ fontSize: '14px', color: '#C8B9A8', marginBottom: '24px' }}>{email}</p>
                 <p style={{ fontSize: '12px', color: '#3A3530', lineHeight: 1.7, marginBottom: '36px' }}>
-                  Click the link in the email to continue. It expires in 15 minutes.
+                  {step === 'signup_sent'
+                    ? 'You must confirm your email before you can sign in. Open the link in this same browser — it will not work in a different browser or device. It expires in 24 hours.'
+                    : 'a password reset link is on its way. It expires in 30 minutes.'}
                 </p>
-                <button onClick={() => { setStep('entry'); setEmail(''); }}
+                <button onClick={() => { setMode('signin'); setStep('entry'); }}
                   style={{ background: 'none', border: 'none', fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#4A4440', cursor: 'pointer', padding: 0 }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#C9A96E')}
                   onMouseLeave={e => (e.currentTarget.style.color = '#4A4440')}>
-                  ← Use a different email
+                  ← Back to sign in
                 </button>
               </motion.div>
             )}

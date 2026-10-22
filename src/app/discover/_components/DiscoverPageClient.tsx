@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';import { motion, AnimatePresence } from 'framer-motion';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { MoodBoardWidget } from '@/components/discovery/MoodBoardWidget';
 import { VendorGrid } from '@/components/discovery/VendorGrid';
 import { RosterCard } from '@/components/discovery/RosterCard';
@@ -48,19 +50,150 @@ function Header({ onScrollToMatcher, onScrollToRoster }: { onScrollToMatcher: ()
 }
 
 
-function BrowseSection({ vendors, matchData }: { vendors: ClientVendor[]; matchData: MatchResponse | null }) {
+function SaveMoodboardButton({
+  requiresSignIn,
+  isSaving,
+  isSaved,
+  saveError,
+  isPromptOpen,
+  labelValue,
+  onLabelChange,
+  onOpenPrompt,
+  onCancelPrompt,
+  onConfirmSave,
+}: {
+  requiresSignIn: boolean;
+  isSaving: boolean;
+  isSaved: boolean;
+  saveError: string | null;
+  isPromptOpen: boolean;
+  labelValue: string;
+  onLabelChange: (v: string) => void;
+  onOpenPrompt: () => void;
+  onCancelPrompt: () => void;
+  onConfirmSave: () => void;
+}) {
+  if (isPromptOpen) {
+    return (
+      <div style={{ textAlign: 'right' }}>
+        <input
+          type="text"
+          placeholder="Name this look (optional)"
+          value={labelValue}
+          onChange={e => onLabelChange(e.target.value)}
+          maxLength={80}
+          autoFocus
+          style={{
+            width: '220px', padding: '8px 10px', fontSize: '11px',
+            background: '#0C0C0C', border: '1px solid #2D2418', color: '#F0EBE0',
+            outline: 'none', marginBottom: '8px', fontFamily: 'inherit',
+          }}
+        />
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancelPrompt}
+            disabled={isSaving}
+            style={{ background: 'none', border: 'none', fontSize: '9px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#3A3530', cursor: isSaving ? 'default' : 'pointer', padding: '9px 10px' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirmSave}
+            disabled={isSaving}
+            style={{ background: 'none', fontSize: '9px', letterSpacing: '0.16em', textTransform: 'uppercase', padding: '9px 16px', border: '1px solid #2D2418', color: '#C9A96E', cursor: isSaving ? 'default' : 'pointer', opacity: isSaving ? 0.6 : 1 }}
+          >
+            {isSaving ? 'Saving…' : 'Confirm Save'}
+          </button>
+        </div>
+        {saveError && (
+          <p style={{ fontSize: '10px', color: 'rgba(220,80,80,0.75)', marginTop: '8px', maxWidth: '220px', marginLeft: 'auto' }}>{saveError}</p>
+        )}
+      </div>
+    );
+  }
+
+  const label = isSaved ? 'Saved ✓' : requiresSignIn ? 'Sign In to Save' : 'Save This Look';
+  return (
+    <div style={{ textAlign: 'right' }}>
+      <button
+        onClick={onOpenPrompt}
+        disabled={isSaved}
+        style={{
+          background: isSaved ? 'rgba(90,138,90,0.1)' : 'none',
+          fontSize: '10px',
+          letterSpacing: '0.2em',
+          textTransform: 'uppercase',
+          padding: '9px 18px',
+          border: `1px solid ${isSaved ? 'rgba(90,138,90,0.4)' : '#2D2418'}`,
+          color: isSaved ? '#5A8A5A' : '#C9A96E',
+          cursor: isSaved ? 'default' : 'pointer',
+          transition: 'background 0.2s, color 0.2s',
+        }}
+        onMouseEnter={e => { if (!isSaved) { (e.currentTarget as HTMLButtonElement).style.background = '#C9A96E'; (e.currentTarget as HTMLButtonElement).style.color = '#080808'; } }}
+        onMouseLeave={e => { if (!isSaved) { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.color = '#C9A96E'; } }}
+      >
+        {label}
+      </button>
+      {saveError && (
+        <p style={{ fontSize: '10px', color: 'rgba(220,80,80,0.75)', marginTop: '8px', maxWidth: '220px', marginLeft: 'auto' }}>{saveError}</p>
+      )}
+    </div>
+  );
+}
+
+function BrowseSection({
+  vendors,
+  matchData,
+  requiresSignIn,
+  isSaving,
+  isSaved,
+  saveError,
+  isPromptOpen,
+  labelValue,
+  onLabelChange,
+  onOpenPrompt,
+  onCancelPrompt,
+  onConfirmSave,
+}: {
+  vendors: ClientVendor[];
+  matchData: MatchResponse | null;
+  requiresSignIn: boolean;
+  isSaving: boolean;
+  isSaved: boolean;
+  saveError: string | null;
+  isPromptOpen: boolean;
+  labelValue: string;
+  onLabelChange: (v: string) => void;
+  onOpenPrompt: () => void;
+  onCancelPrompt: () => void;
+  onConfirmSave: () => void;
+}) {
   return (
     <AnimatePresence mode="wait">
       {matchData ? (
         <motion.div key="with-match" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45 }} style={{ display: 'flex', flexDirection: 'column', gap: '56px' }}>
           <div>
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} style={{ marginBottom: '36px' }}>
-              <p style={{ fontSize: '10px', letterSpacing: '0.28em', textTransform: 'uppercase', color: '#C9A96E', marginBottom: '8px' }}>
-                Your Matches · {matchData.matches.length} Artists
-              </p>
-              <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', color: '#F0EBE0', fontWeight: 400 }}>
-                {matchData.matches.length === 1 ? 'Your best match' : 'Your best matches'}
-              </h2>
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} style={{ marginBottom: '36px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px' }}>
+              <div>
+                <p style={{ fontSize: '10px', letterSpacing: '0.28em', textTransform: 'uppercase', color: '#C9A96E', marginBottom: '8px' }}>
+                  Your Matches · {matchData.matches.length} Artists
+                </p>
+                <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', color: '#F0EBE0', fontWeight: 400 }}>
+                  {matchData.matches.length === 1 ? 'Your best match' : 'Your best matches'}
+                </h2>
+              </div>
+              <SaveMoodboardButton
+                requiresSignIn={requiresSignIn}
+                isSaving={isSaving}
+                isSaved={isSaved}
+                saveError={saveError}
+                isPromptOpen={isPromptOpen}
+                labelValue={labelValue}
+                onLabelChange={onLabelChange}
+                onOpenPrompt={onOpenPrompt}
+                onCancelPrompt={onCancelPrompt}
+                onConfirmSave={onConfirmSave}
+              />
             </motion.div>
             <VendorGrid matches={matchData.matches} />
           </div>
@@ -105,13 +238,67 @@ interface DiscoverPageClientProps { vendors: ClientVendor[]; }
 
 export function DiscoverPageClient({ vendors }: DiscoverPageClientProps) {
   const [matchData, setMatchData] = useState<MatchResponse | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<{ base64: string; mimeType: string } | null>(null);
   const widgetRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const { data: session } = useSession();
+  const router = useRouter();
 
-  const handleMatchSuccess = useCallback((data: MatchResponse) => {
+  const [isSavingMoodboard, setIsSavingMoodboard] = useState(false);
+  const [isMoodboardSaved, setIsMoodboardSaved] = useState(false);
+  const [moodboardSaveError, setMoodboardSaveError] = useState<string | null>(null);
+  const [isLabelPromptOpen, setIsLabelPromptOpen] = useState(false);
+  const [moodboardLabel, setMoodboardLabel] = useState('');
+
+  const handleMatchSuccess = useCallback((data: MatchResponse, image: { base64: string; mimeType: string }) => {
     setMatchData(data);
+    setUploadedImage(image);
+    setIsMoodboardSaved(false);
+    setMoodboardSaveError(null);
+    setIsLabelPromptOpen(false);
+    setMoodboardLabel('');
     setTimeout(() => { resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 420);
   }, []);
+
+  const handleOpenSavePrompt = useCallback(() => {
+    if (!session) {
+      router.push('/auth?callbackUrl=/discover');
+      return;
+    }
+    setIsLabelPromptOpen(true);
+  }, [session, router]);
+
+  const handleCancelSavePrompt = useCallback(() => {
+    setIsLabelPromptOpen(false);
+    setMoodboardSaveError(null);
+  }, []);
+
+  const handleConfirmSaveMoodboard = useCallback(async () => {
+    if (!matchData || !uploadedImage || isSavingMoodboard) return;
+    setIsSavingMoodboard(true);
+    setMoodboardSaveError(null);
+    try {
+      const res = await fetch('/api/user/save-moodboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: moodboardLabel.trim() || undefined,
+          image: { data: uploadedImage.base64, mimeType: uploadedImage.mimeType },
+          imageProfile: matchData.imageProfile,
+          styleDNA: matchData.styleDNA,
+          editorialAnalysis: matchData.editorialAnalysis,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not save this look. Please try again.');
+      setIsMoodboardSaved(true);
+      setIsLabelPromptOpen(false);
+    } catch (err) {
+      setMoodboardSaveError(err instanceof Error ? err.message : 'Could not save this look. Please try again.');
+    } finally {
+      setIsSavingMoodboard(false);
+    }
+  }, [matchData, uploadedImage, isSavingMoodboard, moodboardLabel]);
 
   const scrollToWidget = useCallback(() => { widgetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, []);
   const scrollToRoster = useCallback(() => { resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, []);
@@ -144,7 +331,20 @@ export function DiscoverPageClient({ vendors }: DiscoverPageClientProps) {
 
       <section id="roster" ref={resultsRef} style={{ paddingBottom: '96px', paddingTop: '64px' }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 40px' }}>
-          <BrowseSection vendors={vendors} matchData={matchData} />
+          <BrowseSection
+            vendors={vendors}
+            matchData={matchData}
+            requiresSignIn={!session}
+            isSaving={isSavingMoodboard}
+            isSaved={isMoodboardSaved}
+            saveError={moodboardSaveError}
+            isPromptOpen={isLabelPromptOpen}
+            labelValue={moodboardLabel}
+            onLabelChange={setMoodboardLabel}
+            onOpenPrompt={handleOpenSavePrompt}
+            onCancelPrompt={handleCancelSavePrompt}
+            onConfirmSave={handleConfirmSaveMoodboard}
+          />
         </div>
       </section>
 

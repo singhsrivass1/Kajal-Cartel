@@ -157,7 +157,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         description: v.tagline,
       };
     }
-  } catch {}
+  } catch (err) {
+    // Falling back to a generic title is correct — metadata must never break the
+    // page — but the failure still gets logged rather than silently swallowed.
+    console.error(`[generateMetadata /artists/${params.slug}] Failed to load vendor:`, err);
+  }
 
   return { title: 'Artist Profile — Kajal Cartel' };
 }

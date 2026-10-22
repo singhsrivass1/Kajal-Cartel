@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: 'Discover Artists — Kajal Cartel',
   description:
-    'Find your perfect Delhi bridal artist using AI mood board matching. Upload your aesthetic vision and let our Gemini-powered engine curate your ideal match.',
+    'Find your perfect Delhi bridal artist. Show us your aesthetic vision and discover artists curated to your style.',
 };
 
 function serializeVendor(v: Record<string, any>): ClientVendor {
