@@ -1,19 +1,29 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { getServerSession } from 'next-auth';
+import { Types } from 'mongoose';
+import { authOptions } from '@/lib/auth';
 import { dbConnect } from '@/lib/db/connect';
 import Vendor from '@/lib/db/models/Vendor';
 import Service from '@/lib/db/models/Service';
+import User from '@/lib/db/models/User';
 import { ArtistPageClient } from './_components/ArtistPageClient';
 import type { ArtistProfile, ClientService } from '@/types/artist';
 import SaveArtistButton from "@/components/SaveArtistButton";
+import { getVendorReviewStats, listPublishedReviewsForVendor } from '@/lib/db/controllers/ReviewManager';
+import type { PublicReview } from '@/lib/db/controllers/ReviewManager';
+import { getVendorFacets } from '@/lib/db/controllers/DiscoveryManager';
+import { getBookingPolicy } from '@/lib/booking/policy';
+import { getSiteUrl } from '@/lib/site/config';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { slug: string };
+  searchParams?: { service?: string };
 }
 
-function serializeArtist(v: Record<string, any>): ArtistProfile {
+function serializeArtist(v: Record<string, any>, ratings: { averageRating: number; totalReviews: number }): ArtistProfile {
   return {
     _id: v._id.toString(),
     name: v.name,
@@ -45,10 +55,7 @@ function serializeArtist(v: Record<string, any>): ArtistProfile {
       tier: v.pricing?.tier ?? 'premium',
       startingFromINR: v.pricing?.startingFromINR ?? 0,
     },
-    ratings: {
-      averageRating: v.ratings?.averageRating ?? 0,
-      totalReviews: v.ratings?.totalReviews ?? 0,
-    },
+    ratings,
     flags: {
       badgeType: v.flags?.badgeType ?? null,
       isVerified: v.flags?.isVerified ?? false,
@@ -148,13 +155,23 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   try {
     await dbConnect();
     const v = await Vendor.findOne({ slug: params.slug, 'flags.isActive': true })
-      .select('name tagline')
+      .select('name tagline profileImageUrl location.microLocation')
       .lean<Record<string, any>>();
 
     if (v) {
+      const title = `${v.name} — Kajal Cartel`;
+      const description = `${v.tagline}${v.location?.microLocation ? ` Bridal artist in ${v.location.microLocation}, New Delhi.` : ''}`;
       return {
-        title: `${v.name} — Kajal Cartel`,
-        description: v.tagline,
+        title,
+        description,
+        alternates: { canonical: `/artists/${params.slug}` },
+        openGraph: {
+          title,
+          description,
+          url: `/artists/${params.slug}`,
+          type: 'profile',
+          ...(v.profileImageUrl ? { images: [{ url: v.profileImageUrl, alt: v.name }] } : {}),
+        },
       };
     }
   } catch (err) {
@@ -163,10 +180,41 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     console.error(`[generateMetadata /artists/${params.slug}] Failed to load vendor:`, err);
   }
 
-  return { title: 'Artist Profile — Kajal Cartel' };
+  return { title: 'Artist Profile — Kajal Cartel', robots: { index: false } };
 }
 
-export default async function ArtistPage({ params }: PageProps) {
+function jsonLd(artist: ArtistProfile, reviews: PublicReview[]): string {
+  const siteUrl = getSiteUrl();
+  const absolute = (path: string) => (siteUrl ? new URL(path, siteUrl).toString() : path);
+  const data: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'BeautySalon',
+    name: artist.name,
+    description: artist.tagline,
+    url: absolute(`/artists/${artist.slug}`),
+    areaServed: `${artist.location.microLocation}, ${artist.location.city}`,
+    ...(artist.profileImageUrl ? { image: absolute(artist.profileImageUrl) } : {}),
+  };
+  if (artist.ratings.totalReviews > 0) {
+    data.aggregateRating = {
+      '@type': 'AggregateRating',
+      ratingValue: artist.ratings.averageRating,
+      reviewCount: artist.ratings.totalReviews,
+      bestRating: 5,
+      worstRating: 1,
+    };
+    data.review = reviews.slice(0, 5).map((r) => ({
+      '@type': 'Review',
+      author: { '@type': 'Person', name: r.authorDisplayName },
+      datePublished: r.createdAt.slice(0, 10),
+      reviewRating: { '@type': 'Rating', ratingValue: r.rating, bestRating: 5, worstRating: 1 },
+      reviewBody: r.body,
+    }));
+  }
+  return JSON.stringify(data).replace(/</g, '\\u003c');
+}
+
+export default async function ArtistPage({ params, searchParams }: PageProps) {
   await dbConnect();
 
   const rawVendor = await Vendor.findOne({
@@ -176,27 +224,48 @@ export default async function ArtistPage({ params }: PageProps) {
 
   if (!rawVendor) notFound();
 
-  const rawServices = await Service.find({
-    vendor: rawVendor._id,
-    'flags.isActive': true,
-  })
-    .sort({ 'checkoutMeta.checkoutCategory': 1, 'checkoutMeta.displayPriority': 1 })
-    .lean<Record<string, any>[]>();
+  const vendorId = rawVendor._id as Types.ObjectId;
+  const session = await getServerSession(authOptions);
 
-  const artist = serializeArtist(rawVendor);
+  const [rawServices, stats, reviews, facets, savedUser] = await Promise.all([
+    Service.find({
+      vendor: vendorId,
+      'flags.isActive': true,
+    })
+      .sort({ 'checkoutMeta.checkoutCategory': 1, 'checkoutMeta.displayPriority': 1 })
+      .lean<Record<string, any>[]>(),
+    getVendorReviewStats([vendorId]),
+    listPublishedReviewsForVendor(vendorId, 30),
+    getVendorFacets([vendorId]),
+    session?.user?.email
+      ? User.findOne({ email: session.user.email }).select('savedArtists').lean<{ savedArtists?: string[] }>()
+      : Promise.resolve(null),
+  ]);
+
+  const artist = serializeArtist(rawVendor, stats.get(vendorId.toString()) ?? { averageRating: 0, totalReviews: 0 });
   const services = rawServices.map(serializeService);
+  const requestedService = typeof searchParams?.service === 'string' ? searchParams.service : undefined;
+  const initialServiceId = services.some((s) => s._id === requestedService && s.serviceRole === 'anchor') ? requestedService : undefined;
 
   return (
     <div className="relative w-full">
-      {/* This is the new overlay wrapper. 
-        It drops the Save button into the top right corner of the screen, 
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(artist, reviews) }} />
+      {/* This is the new overlay wrapper.
+        It drops the Save button into the top right corner of the screen,
         floating beautifully above your Framer Motion UI.
       */}
       <div className="absolute top-6 right-6 md:top-10 md:right-10 z-50">
-        <SaveArtistButton artistSlug={artist.slug} />
+        <SaveArtistButton artistSlug={artist.slug} initialSaved={Boolean(savedUser?.savedArtists?.includes(artist.slug))} />
       </div>
-      
-      <ArtistPageClient artist={artist} services={services} />
+
+      <ArtistPageClient
+        artist={artist}
+        services={services}
+        reviews={reviews}
+        policy={getBookingPolicy()}
+        acceptsOnlineBooking={Boolean(facets.get(vendorId.toString())?.acceptsOnlineBooking)}
+        initialServiceId={initialServiceId}
+      />
     </div>
   );
 }

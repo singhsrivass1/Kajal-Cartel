@@ -16,9 +16,10 @@ function formatINR(n: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 }
 
-interface RosterCardProps { vendor: ClientVendor; index: number; }
+interface RosterCardProps { vendor: ClientVendor; index: number; fromPriceINR?: number | null; acceptsOnlineBooking?: boolean; }
 
-export function RosterCard({ vendor, index }: RosterCardProps) {
+export function RosterCard({ vendor, index, fromPriceINR, acceptsOnlineBooking }: RosterCardProps) {
+  const fromPrice = fromPriceINR === undefined ? (vendor.serviceSummary.priceRangeINR.min || null) : fromPriceINR;
   const badge = vendor.flags.badgeType ? BADGE_CONFIG[vendor.flags.badgeType] : null;
 
   return (
@@ -54,7 +55,10 @@ export function RosterCard({ vendor, index }: RosterCardProps) {
 
         {vendor.flags.isVerified && (
           <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
-            <span style={{ display: 'block', padding: '2px 7px', fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', background: 'rgba(8,8,8,0.72)', color: '#5A8A5A', backdropFilter: 'blur(4px)' }}>✓</span>
+            <span title="Verified by Kajal Cartel" style={{ display: 'block', padding: '2px 7px', fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', background: 'rgba(8,8,8,0.72)', color: '#5A8A5A', backdropFilter: 'blur(4px)' }}>
+              <span aria-hidden="true">✓</span>
+              <span className="sr-only">Verified artist</span>
+            </span>
           </div>
         )}
       </div>
@@ -81,16 +85,30 @@ export function RosterCard({ vendor, index }: RosterCardProps) {
         <div style={{ flex: 1 }} />
         <div style={{ height: '1px', background: '#161412', marginBottom: '12px' }} />
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', gap: '10px' }}>
           <div>
-            <p style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#2A2826', marginBottom: '3px' }}>From</p>
-            <p style={{ fontSize: '12px', color: '#F0EBE0' }}>{formatINR(vendor.serviceSummary.priceRangeINR.min)}</p>
+            <p style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#5A5450', marginBottom: '3px' }}>From</p>
+            <p style={{ fontSize: '12px', color: '#F0EBE0' }}>{fromPrice ? formatINR(fromPrice) : 'On request'}</p>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#2A2826', marginBottom: '3px' }}>Rating</p>
-            <p style={{ fontSize: '12px' }}><span style={{ color: '#C9A96E' }}>★ </span><span style={{ color: '#F0EBE0' }}>{vendor.ratings.averageRating.toFixed(1)}</span></p>
+            <p style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#5A5450', marginBottom: '3px' }}>Reviews</p>
+            {vendor.ratings.totalReviews > 0 ? (
+              <p style={{ fontSize: '12px' }}>
+                <span style={{ color: '#C9A96E' }}>★ </span>
+                <span style={{ color: '#F0EBE0' }}>{vendor.ratings.averageRating.toFixed(1)}</span>
+                <span style={{ fontSize: '10px', color: '#5A5450' }}> ({vendor.ratings.totalReviews})</span>
+              </p>
+            ) : (
+              <p style={{ fontSize: '11px', color: '#5A5450' }}>None yet</p>
+            )}
           </div>
         </div>
+
+        {acceptsOnlineBooking !== undefined && (
+          <p style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: acceptsOnlineBooking ? '#5A8A5A' : '#5A5450', marginBottom: '12px' }}>
+            {acceptsOnlineBooking ? 'Online booking available' : 'Booking on request'}
+          </p>
+        )}
 
         <Link href={`/artists/${vendor.slug}`} style={{ display: 'block', textDecoration: 'none' }}>
           <div style={{ width: '100%', padding: '10px 0', textAlign: 'center', fontSize: '9px', letterSpacing: '0.2em', textTransform: 'uppercase', border: '1px solid #1E1C1A', color: '#3A3530', transition: 'color 0.2s, border-color 0.2s' }}

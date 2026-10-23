@@ -1,8 +1,10 @@
 import { Types } from 'mongoose';
 import SavedMoodboard from '@/lib/db/models/SavedMoodboard';
+import PlanningBoard from '@/lib/db/models/PlanningBoard';
 import { generateWithFallbacks } from '@/lib/ai/gemini';
 import { fetchActiveRosterVendors, formatRosterBrief } from '@/lib/ai/rosterBrief';
 import { serializeClientVendor } from '@/lib/db/serializers/clientVendor';
+import { applyVerifiedRatings } from '@/lib/db/serializers/verifiedRatings';
 import type { MatchResult } from '@/types/match';
 
 export class MoodboardValidationError extends Error {
@@ -114,6 +116,31 @@ export async function deleteMoodboard(userId: string, moodboardId: string): Prom
   if (result.deletedCount === 0) {
     throw new MoodboardValidationError('Saved look not found.', 404);
   }
+  await PlanningBoard.updateMany(
+    { user: new Types.ObjectId(userId), 'items.savedLook': new Types.ObjectId(moodboardId) },
+    { $pull: { items: { savedLook: new Types.ObjectId(moodboardId) } } }
+  );
+}
+
+export async function renameMoodboard(userId: string, moodboardId: string, label: unknown): Promise<{ label: string }> {
+  if (!Types.ObjectId.isValid(moodboardId)) {
+    throw new MoodboardValidationError('Invalid moodboard id.');
+  }
+  if (typeof label !== 'string' || !label.trim()) {
+    throw new MoodboardValidationError('Please enter a name for this look.');
+  }
+  const trimmed = label.trim();
+  if (trimmed.length > 80) {
+    throw new MoodboardValidationError('Names must be 80 characters or fewer.');
+  }
+  if (/[\u0000-\u001F\u007F]/.test(trimmed)) {
+    throw new MoodboardValidationError('The name contains characters that are not allowed.');
+  }
+  const result = await SavedMoodboard.updateOne({ _id: moodboardId, user: userId }, { $set: { label: trimmed } });
+  if (result.matchedCount === 0) {
+    throw new MoodboardValidationError('Saved look not found.', 404);
+  }
+  return { label: trimmed };
 }
 
 export async function getMoodboardImage(
@@ -249,5 +276,5 @@ export async function rematchSavedMoodboard(
     throw new Error('We could not re-match this saved look. Please try again.');
   }
 
-  return results;
+  return applyVerifiedRatings(results);
 }

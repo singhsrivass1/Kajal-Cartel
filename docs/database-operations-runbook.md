@@ -35,13 +35,24 @@ Collection names come from the Mongoose schemas (`src/lib/db/models`) and the Ne
 | I2 | `pendingsignups` | `{ email: 1 }` | unique, name `email_1` | One pending signup per email | Multiple live tokens per email |
 | I3 | `pendingsignups` | `{ tokenHash: 1 }` | unique, name `tokenHash_1` | Token lookup | Negligible (256-bit tokens) |
 | I4 | `pendingsignups` | `{ expiresAt: 1 }` | TTL `expireAfterSeconds: 0`, name `expiresAt_1` | Removal of abandoned signups | Password hashes of abandoned signups retained indefinitely |
-| I5 | `bookings` | `{ customer: 1, idempotencyKey: 1 }` | unique, name `customer_1_idempotencyKey_1` | Idempotent booking creation | Duplicate bookings from repeated submissions |
-| I6 | `bookings` | `{ vendor: 1, service: 1, date: 1, startTime: 1 }` | unique, partial `{ status: { $in: ["PENDING", "CONFIRMED"] } }`, name `vendor_1_service_1_date_1_startTime_1` | Double-booking backstop | Concurrent double-booking of a slot |
+| I5 | `bookings` | `{ customer: 1, idempotencyKey: 1 }` | unique, name `customer_1_idempotencyKey_1` | Idempotent booking creation | Backstop only — repeated submissions are replayed inside the per-artist booking transaction |
+| I6 | `bookings` | `{ vendor: 1, service: 1, date: 1, startTime: 1 }` | unique, partial `{ status: { $in: ["PENDING", "CONFIRMED"] } }`, name `vendor_1_service_1_date_1_startTime_1` | Double-booking backstop | Backstop only — overlapping bookings are prevented by the per-artist booking transaction |
 | I7 | `vendors` | `{ slug: 1 }` | unique, name `slug_1` | Vendor lookup by slug | Ambiguous artist pages and bookings |
 | I8 | `services` | `{ vendor: 1, slug: 1 }` | unique, name `vendor_1_slug_1` | Service uniqueness per vendor | Duplicate services |
 | I9 | `vendoravailabilities` | `{ vendor: 1 }` | unique, name `vendor_1` | One availability record per vendor | Availability read from an arbitrary record |
 | I10 | `accounts` | `{ provider: 1, providerAccountId: 1 }` | unique, name `provider_1_providerAccountId_1` | NextAuth `getUserByAccount` / `linkAccount` | Duplicate Google links on concurrent first sign-in |
 | I11 | `accounts` | `{ userId: 1, provider: 1 }` | non-unique, name `userId_1_provider_1` | Admin authorization lookup | Collection scan per admin request |
+| I12 | `reviews` | `{ booking: 1 }` | unique, name `booking_1` | Backstop for one review per booking | None for correctness — duplicates are already prevented inside a transaction that claims `bookings.reviewedAt` |
+| I13 | `reviews` | `{ vendor: 1, status: 1, createdAt: -1 }` | non-unique, name `vendor_1_status_1_createdAt_-1` | Artist review lists and rating aggregates | Collection scan per artist page |
+| I14 | `reviews` | `{ status: 1, createdAt: -1 }` | non-unique, name `status_1_createdAt_-1` | Homepage recent reviews, admin moderation | Collection scan |
+| I15 | `planningboards` | `{ user: 1, updatedAt: -1 }` | non-unique, name `user_1_updatedAt_-1` | Moodboard lists | Collection scan per moodboard page |
+| I16 | `boardimages` | `{ user: 1, createdAt: -1 }` and `{ board: 1 }` | non-unique, names `user_1_createdAt_-1`, `board_1` | Upload quota count, board deletion | Collection scan |
+
+I12–I16 live on collections introduced by the product completion sprint (`reviews`, `planningboards`, `boardimages`). They are empty until the features are used, so creating these indexes builds on no existing data and needs no duplicate checks. Mongoose `autoIndex` may create them on first use; confirm with the Part 1 audit rather than assuming they exist. Correctness never depends on them: the booking double-booking guarantee comes from transactions that increment `vendors.bookingLockVersion`, and review uniqueness from the transactional claim on `bookings.reviewedAt`.
+
+Collection setup: no collection needs to be created by hand. `planningboards` and `boardimages` are created on their first ordinary write; `reviews` is first written inside a transaction, which requires MongoDB 4.4 or later on a replica set (every current Atlas tier, including M0, qualifies). Booking, reschedule, blocked-date, working-hour and review writes all require transaction support.
+
+The sprint added only optional fields to existing collections (`bookings.history`, `rescheduleCount`, `confirmedAt`, `completedAt`, `cancelledAt`, `cancelledBy`, `cancellationReason`, `reviewedAt`, `lastRescheduledAt`; `users.phone`, `users.artistVendor`, the `artist` role value; `vendors.bookingLockVersion`). No backfill or data migration is required, and no index was added to an existing collection. Seeded `vendors.ratings` values are no longer read anywhere; public ratings are computed from published `reviews`.
 
 Performance-only indexes declared in the schemas (`bookings {vendor,date,status}`, `bookings {customer,createdAt}`, `savedmoodboards {user,createdAt}`, `blockeddates {vendor,startDate,endDate}`, `portfolioimages {vendor,createdAt}`, and the `services`, `vendors`, and `users.savedArtists` filter indexes) are lower priority and follow the same procedure. The `vendors` 2dsphere and text indexes are not used by any current query.
 

@@ -258,7 +258,7 @@ function ProcessingView({ previewUrl, step }: { previewUrl: string | null; step:
       transition={{ duration: 0.35 }}
     >
       <div style={{ border: '1px solid #1C1C1C', overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr' }}>
+        <div className="grid grid-cols-1 md:grid-cols-[3fr_2fr]">
           <div style={{ position: 'relative', background: '#080808', minHeight: '280px' }}>
             {previewUrl && (
               <img

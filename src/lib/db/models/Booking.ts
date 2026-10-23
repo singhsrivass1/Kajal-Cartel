@@ -44,6 +44,26 @@ interface IBookingContactInfo {
   email: string;
 }
 
+export const BOOKING_ACTORS = ['customer', 'admin', 'system'] as const;
+export type BookingActor = (typeof BOOKING_ACTORS)[number];
+
+export interface IBookingHistoryEntry {
+  at: Date;
+  actor: BookingActor;
+  action: 'created' | 'status' | 'rescheduled';
+  fromStatus?: BookingStatus;
+  toStatus?: BookingStatus;
+  fromDate?: Date;
+  fromStartTime?: string;
+  fromEndTime?: string;
+  toDate?: Date;
+  toStartTime?: string;
+  toEndTime?: string;
+  note?: string;
+}
+
+export const MAX_BOOKING_HISTORY = 100;
+
 export interface IBooking extends Document {
   vendor: Types.ObjectId;
   service: Types.ObjectId;
@@ -58,6 +78,15 @@ export interface IBooking extends Document {
   customerNotes?: string;
   adminNotes?: string;
   idempotencyKey: string;
+  rescheduleCount: number;
+  lastRescheduledAt?: Date;
+  confirmedAt?: Date;
+  completedAt?: Date;
+  cancelledAt?: Date;
+  cancelledBy?: Exclude<BookingActor, 'system'>;
+  cancellationReason?: string;
+  reviewedAt?: Date;
+  history: IBookingHistoryEntry[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -109,6 +138,24 @@ const BookingContactInfoSchema = new Schema<IBookingContactInfo>(
   { _id: false }
 );
 
+const BookingHistoryEntrySchema = new Schema<IBookingHistoryEntry>(
+  {
+    at: { type: Date, required: true },
+    actor: { type: String, enum: BOOKING_ACTORS, required: true },
+    action: { type: String, enum: ['created', 'status', 'rescheduled'], required: true },
+    fromStatus: { type: String, enum: BOOKING_STATUSES },
+    toStatus: { type: String, enum: BOOKING_STATUSES },
+    fromDate: { type: Date },
+    fromStartTime: { type: String },
+    fromEndTime: { type: String },
+    toDate: { type: Date },
+    toStartTime: { type: String },
+    toEndTime: { type: String },
+    note: { type: String, trim: true, maxlength: 300 },
+  },
+  { _id: false }
+);
+
 const BookingSchema = new Schema<IBooking>(
   {
     vendor: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
@@ -137,6 +184,22 @@ const BookingSchema = new Schema<IBooking>(
     customerNotes: { type: String, trim: true, maxlength: 500 },
     adminNotes: { type: String, trim: true, maxlength: 500 },
     idempotencyKey: { type: String, required: true, trim: true },
+    rescheduleCount: { type: Number, default: 0, min: 0 },
+    lastRescheduledAt: { type: Date },
+    confirmedAt: { type: Date },
+    completedAt: { type: Date },
+    cancelledAt: { type: Date },
+    cancelledBy: { type: String, enum: ['customer', 'admin'] },
+    cancellationReason: { type: String, trim: true, maxlength: 300 },
+    reviewedAt: { type: Date },
+    history: {
+      type: [BookingHistoryEntrySchema],
+      default: [],
+      validate: {
+        validator: (entries: IBookingHistoryEntry[]) => entries.length <= MAX_BOOKING_HISTORY,
+        message: `A booking can hold at most ${MAX_BOOKING_HISTORY} history entries.`,
+      },
+    },
   },
   {
     timestamps: true,

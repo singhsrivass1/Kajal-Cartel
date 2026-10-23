@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
+import { Types } from 'mongoose';
 import { dbConnect } from '@/lib/db/connect';
 import Vendor from '@/lib/db/models/Vendor';
 import { DiscoverPageClient } from './_components/DiscoverPageClient';
-import type { ClientVendor } from '@/types/match';
+import { serializeVendorsWithVerifiedRatings } from '@/lib/db/serializers/verifiedRatings';
+import { getVendorFacets } from '@/lib/db/controllers/DiscoveryManager';
+import type { DiscoverVendor } from '@/types/discovery';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,61 +13,47 @@ export const metadata: Metadata = {
   title: 'Discover Artists — Kajal Cartel',
   description:
     'Find your perfect Delhi bridal artist. Show us your aesthetic vision and discover artists curated to your style.',
+  alternates: { canonical: '/discover' },
+  openGraph: {
+    title: 'Discover Artists — Kajal Cartel',
+    description: 'Search Delhi bridal artists by style, occasion, service and availability, or match by uploading a look you love.',
+    url: '/discover',
+  },
 };
 
-function serializeVendor(v: Record<string, any>): ClientVendor {
-  return {
-    _id: v._id.toString(),
-    name: v.name,
-    slug: v.slug,
-    tagline: v.tagline,
-    profileImageUrl: v.profileImageUrl,
-    location: {
-      microLocation: v.location.microLocation,
-      city: v.location.city,
-      travelPolicy: v.location.travelPolicy,
-    },
-    pricing: {
-      tier: v.pricing.tier,
-      startingFromINR: v.pricing.startingFromINR,
-    },
-    ratings: {
-      averageRating: v.ratings?.averageRating ?? 0,
-      totalReviews: v.ratings?.totalReviews ?? 0,
-    },
-    flags: {
-      badgeType: v.flags?.badgeType ?? null,
-      isVerified: v.flags?.isVerified ?? false,
-      isFeatured: v.flags?.isFeatured ?? false,
-    },
-    aestheticProfile: {
-      styleArchetypes: v.aestheticProfile?.styleArchetypes ?? [],
-      signatureElements: v.aestheticProfile?.signatureElements,
-    },
-    serviceSummary: {
-      serviceCount: v.serviceSummary?.serviceCount ?? 0,
-      anchorServiceCount: v.serviceSummary?.anchorServiceCount ?? 0,
-      priceRangeINR: v.serviceSummary?.priceRangeINR ?? { min: 0, max: 0 },
-      occasionCoverage: v.serviceSummary?.occasionCoverage ?? [],
-      hasTrialOffering: v.serviceSummary?.hasTrialOffering ?? false,
-    },
-  };
-}
-
 export default async function DiscoverPage() {
-  let vendors: ClientVendor[] = [];
+  let vendors: DiscoverVendor[] = [];
+  let loadError = false;
 
   try {
     await dbConnect();
 
     const rawVendors = await Vendor.find({ 'flags.isActive': true })
-      .sort({ 'flags.isFeatured': -1, 'ratings.averageRating': -1 })
+      .select('-portfolio')
+      .sort({ 'flags.isFeatured': -1, name: 1 })
       .lean<Record<string, any>[]>();
 
-    vendors = rawVendors.map(serializeVendor);
+    const [serialized, facets] = await Promise.all([
+      serializeVendorsWithVerifiedRatings(rawVendors),
+      getVendorFacets(rawVendors.map((v) => v._id as Types.ObjectId)),
+    ]);
+
+    vendors = serialized.map((v) => {
+      const f = facets.get(v._id);
+      return {
+        ...v,
+        facets: {
+          fromPriceINR: f?.fromPriceINR ?? null,
+          serviceCategories: f?.serviceCategories ?? [],
+          occasions: f?.occasions ?? [],
+          acceptsOnlineBooking: f?.acceptsOnlineBooking ?? false,
+        },
+      };
+    });
   } catch (error) {
+    loadError = true;
     console.error('[DiscoverPage] Failed to load vendor roster:', error);
   }
 
-  return <DiscoverPageClient vendors={vendors} />;
+  return <DiscoverPageClient vendors={vendors} loadError={loadError} />;
 }

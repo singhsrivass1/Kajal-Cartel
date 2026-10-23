@@ -3,10 +3,23 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { dbConnect } from '@/lib/db/connect';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
-import { deleteMoodboard, MoodboardValidationError } from '@/lib/db/controllers/MoodboardManager';
+import { deleteMoodboard, renameMoodboard, MoodboardValidationError } from '@/lib/db/controllers/MoodboardManager';
+import { withUser, readJsonObject } from '@/lib/api/userRoute';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+export async function PATCH(request: Request, { params }: { params: { id: string } }): Promise<NextResponse> {
+  return withUser(
+    request,
+    'PATCH /api/user/moodboards/[id]',
+    async ({ userId }) => {
+      const body = await readJsonObject(request);
+      return renameMoodboard(userId, params.id, body.label);
+    },
+    { scope: 'moodboard-rename', rule: RATE_LIMITS.generalWrite }
+  );
+}
 
 export async function DELETE(
   request: Request,

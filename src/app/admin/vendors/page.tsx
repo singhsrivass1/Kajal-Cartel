@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
-import { getAdminSession } from '@/lib/auth/admin';
+import { requireAdminPage } from '@/lib/auth/pageGuards';
 import { dbConnect } from '@/lib/db/connect';
 import { listVendorsForAdmin } from '@/lib/db/controllers/VendorAdminManager';
 import { AdminVendorsClient } from './_components/AdminVendorsClient';
@@ -13,8 +12,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminVendorsPage() {
-  const session = await getAdminSession();
-  if (!session) redirect('/auth?callbackUrl=/admin');
+  const session = await requireAdminPage('/admin/vendors');
 
   await dbConnect();
   const vendors = await listVendorsForAdmin();

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
-import { getAdminSession } from '@/lib/auth/admin';
+import { requireAdminPage } from '@/lib/auth/pageGuards';
 
 export const metadata: Metadata = {
   title: 'Admin — Kajal Cartel',
@@ -8,11 +7,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await getAdminSession();
-
-  if (!session) {
-    redirect('/auth?callbackUrl=/admin');
-  }
+  await requireAdminPage('/admin');
 
   return <>{children}</>;
 }

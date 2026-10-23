@@ -114,12 +114,16 @@ export function VendorCard({ match, rank, index, showScore = true, showTags = tr
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div>
-            <p style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#2E2A28', marginBottom: '3px' }}>From</p>
-            <p style={{ fontSize: '13px', color: '#F0EBE0' }}>{formatINR(vendor.serviceSummary.priceRangeINR.min)}</p>
+            <p style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#5A5450', marginBottom: '3px' }}>From</p>
+            <p style={{ fontSize: '13px', color: '#F0EBE0' }}>{vendor.serviceSummary.priceRangeINR.min > 0 ? formatINR(vendor.serviceSummary.priceRangeINR.min) : 'See profile'}</p>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#2E2A28', marginBottom: '3px' }}>Rating</p>
-            <p style={{ fontSize: '13px' }}><span style={{ color: '#C9A96E' }}>★ </span><span style={{ color: '#F0EBE0' }}>{vendor.ratings.averageRating.toFixed(1)}</span><span style={{ fontSize: '11px', color: '#2E2A28' }}> ({vendor.ratings.totalReviews})</span></p>
+            <p style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#5A5450', marginBottom: '3px' }}>Reviews</p>
+            {vendor.ratings.totalReviews > 0 ? (
+              <p style={{ fontSize: '13px' }}><span style={{ color: '#C9A96E' }}>★ </span><span style={{ color: '#F0EBE0' }}>{vendor.ratings.averageRating.toFixed(1)}</span><span style={{ fontSize: '11px', color: '#5A5450' }}> ({vendor.ratings.totalReviews})</span></p>
+            ) : (
+              <p style={{ fontSize: '12px', color: '#5A5450' }}>None yet</p>
+            )}
           </div>
         </div>
 

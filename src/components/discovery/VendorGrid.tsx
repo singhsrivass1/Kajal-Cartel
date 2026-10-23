@@ -34,7 +34,7 @@ export function VendorGrid({ matches, showScore = true, showTags = true }: Vendo
         <p style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#2E2A28' }}>Ranked by fit</p>
       </motion.div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: '16px' }}>
         {matches.map((match, index) => (
           <VendorCard key={match.vendor._id} match={match} rank={index + 1} index={index} showScore={showScore} showTags={showTags} />
         ))}

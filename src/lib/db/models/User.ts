@@ -1,8 +1,11 @@
-import { Schema, model, models, type Document } from 'mongoose';
+import { Schema, model, models, type Document, type Types } from 'mongoose';
 
-export const USER_ROLES = ['customer', 'admin'] as const;
+export const USER_ROLES = ['customer', 'admin', 'artist'] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
+
+export const MAX_PROFILE_NAME_LENGTH = 100;
+export const MAX_PROFILE_PHONE_LENGTH = 20;
 
 export interface IUser extends Document {
   name?: string;
@@ -10,6 +13,8 @@ export interface IUser extends Document {
   emailVerified?: Date;
   image?: string;
   role: UserRole;
+  phone?: string;
+  artistVendor?: Types.ObjectId;
   passwordHash?: string;
   credentialsVerifiedAt?: Date;
   resetPasswordTokenHash?: string;
@@ -26,6 +31,8 @@ const UserSchema = new Schema<IUser>(
     emailVerified: { type: Date },
     image: { type: String },
     role: { type: String, enum: [...USER_ROLES], default: 'customer' },
+    phone: { type: String, trim: true, maxlength: MAX_PROFILE_PHONE_LENGTH },
+    artistVendor: { type: Schema.Types.ObjectId, ref: 'Vendor' },
     passwordHash: { type: String, select: false },
     credentialsVerifiedAt: { type: Date },
     resetPasswordTokenHash: { type: String, select: false },

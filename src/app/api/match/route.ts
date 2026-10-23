@@ -3,6 +3,7 @@ import { dbConnect } from '@/lib/db/connect';
 import { generateWithFallbacks } from '@/lib/ai/gemini';
 import { fetchActiveRosterVendors, formatRosterBrief } from '@/lib/ai/rosterBrief';
 import { serializeClientVendor } from '@/lib/db/serializers/clientVendor';
+import { applyVerifiedRatings } from '@/lib/db/serializers/verifiedRatings';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 import type {
   MatchResult,
@@ -252,7 +253,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   };
 
   const response: MatchResponse = {
-    matches,
+    matches: await applyVerifiedRatings(matches),
     imageProfile,
     styleDNA,
     editorialAnalysis: parsed.editorialAnalysis,

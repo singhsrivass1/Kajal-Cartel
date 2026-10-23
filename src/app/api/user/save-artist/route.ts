@@ -78,3 +78,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Your session has expired. Please sign in again." }, { status: 401 });
+    }
+
+    const limited = enforceRateLimit(req, "save-artist", RATE_LIMITS.generalWrite, {
+      userId: session.user.email,
+    });
+    if (limited) return limited;
+
+    const artistSlug = (new URL(req.url).searchParams.get("artistSlug") ?? "").trim().toLowerCase();
+    if (!artistSlug || !/^[a-z0-9-]+$/.test(artistSlug)) {
+      return NextResponse.json({ error: "A valid artist slug is required." }, { status: 400 });
+    }
+
+    await dbConnect();
+    await User.updateOne({ email: session.user.email }, { $pull: { savedArtists: artistSlug } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[DELETE /api/user/save-artist] Unhandled error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}

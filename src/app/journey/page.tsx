@@ -6,81 +6,26 @@ import { Types } from 'mongoose';
 import { dbConnect } from '@/lib/db/connect';
 import User from '@/lib/db/models/User';
 import Vendor from '@/lib/db/models/Vendor';
-import Booking from '@/lib/db/models/Booking';
 import SavedMoodboard from '@/lib/db/models/SavedMoodboard';
-import { refFromId } from '@/lib/db/controllers/BookingManager';
 import { JourneyClient } from './_components/JourneyClient';
 import type { IUser } from '@/lib/db/models/User';
-import type { BookingStatus } from '@/lib/db/models/Booking';
+import { listCustomerBookings } from '@/lib/db/controllers/BookingViews';
+import { listBoards } from '@/lib/db/controllers/BoardManager';
+import { serializeVendorsWithVerifiedRatings } from '@/lib/db/serializers/verifiedRatings';
+import { getVendorFacets } from '@/lib/db/controllers/DiscoveryManager';
+import type { JourneyData, JourneyTab, SavedVendorView } from './types';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'My Bridal Journey — Kajal Cartel',
   description: 'Your saved artists, style matches, and booking history.',
+  robots: { index: false, follow: false },
 };
 
-interface SerializedVendor {
-  slug: string;
-  name: string;
-  tagline: string;
-  profileImageUrl: string;
-  microLocation: string;
-  tier: string;
-  startingFromINR: number;
-  averageRating: number;
-  badgeType: string | null;
-}
+const TABS: JourneyTab[] = ['bookings', 'artists', 'looks', 'boards'];
 
-interface SavedMoodboardSummary {
-  id: string;
-  label: string;
-  styleDNA: Array<{ label: string; score: number }>;
-  editorialAnalysis: string;
-  savedAt: string;
-}
-
-interface SerializedBooking {
-  id: string;
-  ref: string;
-  vendorName: string;
-  vendorSlug: string;
-  serviceName: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  status: BookingStatus;
-  total: number;
-  depositAmount: number;
-  createdAt: string;
-}
-
-interface JourneyData {
-  user: {
-    name: string;
-    email: string;
-    image: string;
-  };
-  savedVendors: SerializedVendor[];
-  savedMoodboards: SavedMoodboardSummary[];
-  bookings: SerializedBooking[];
-}
-
-function serializeVendor(v: Record<string, any>): SerializedVendor {
-  return {
-    slug: v.slug,
-    name: v.name,
-    tagline: v.tagline,
-    profileImageUrl: v.profileImageUrl,
-    microLocation: v.location?.microLocation ?? '',
-    tier: v.pricing?.tier ?? 'premium',
-    startingFromINR: v.pricing?.startingFromINR ?? 0,
-    averageRating: v.ratings?.averageRating ?? 0,
-    badgeType: v.flags?.badgeType ?? null,
-  };
-}
-
-export default async function JourneyPage() {
+export default async function JourneyPage({ searchParams }: { searchParams?: { tab?: string } }) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.email) {
@@ -89,78 +34,77 @@ export default async function JourneyPage() {
 
   await dbConnect();
 
-  const userDoc = await User.findOne({ email: session.user.email }).lean<IUser>();
+  const sessionId = (session.user as { id?: unknown }).id;
+  const userDoc = await User.findOne(
+    typeof sessionId === 'string' && Types.ObjectId.isValid(sessionId) ? { _id: sessionId } : { email: session.user.email }
+  ).lean<IUser>();
 
-  const savedArtistSlugs: string[] = userDoc?.savedArtists ?? [];
-
-  let savedVendors: SerializedVendor[] = [];
-  if (savedArtistSlugs.length > 0) {
-    const vendors = await Vendor.find({
-      slug: { $in: savedArtistSlugs },
-      'flags.isActive': true,
-    })
-      .select('slug name tagline profileImageUrl location pricing ratings flags')
-      .lean<Record<string, any>[]>();
-
-    const vendorMap = new Map(vendors.map((v) => [v.slug, v]));
-    savedVendors = savedArtistSlugs
-      .map((slug) => vendorMap.get(slug))
-      .filter((v): v is Record<string, any> => v !== undefined)
-      .map(serializeVendor);
+  if (!userDoc?._id) {
+    redirect('/auth?callbackUrl=/journey');
   }
 
-  let bookings: SerializedBooking[] = [];
-  if (userDoc?._id) {
-    const bookingDocs = await Booking.find({ customer: userDoc._id as Types.ObjectId })
-      .sort({ createdAt: -1 })
-      .populate('vendor', 'name slug')
-      .populate('service', 'name')
-      .lean<Array<Record<string, any>>>();
+  const userId = (userDoc._id as Types.ObjectId).toString();
+  const savedArtistSlugs: string[] = userDoc.savedArtists ?? [];
 
-    bookings = bookingDocs
-      .filter((b) => b.vendor && b.service)
-      .map((b) => ({
-        id: b._id.toString(),
-        ref: refFromId(b._id),
-        vendorName: b.vendor.name,
-        vendorSlug: b.vendor.slug,
-        serviceName: b.service.name,
-        date: new Date(b.date).toISOString().slice(0, 10),
-        startTime: b.startTime,
-        endTime: b.endTime,
-        status: b.status,
-        total: b.priceSnapshot.total,
-        depositAmount: b.priceSnapshot.depositAmount,
-        createdAt: new Date(b.createdAt).toISOString(),
-      }));
-  }
-
-  let savedMoodboards: SavedMoodboardSummary[] = [];
-  if (userDoc?._id) {
-    const moodboardDocs = await SavedMoodboard.find({ user: userDoc._id as Types.ObjectId })
+  const [vendors, bookings, moodboardDocs, boards] = await Promise.all([
+    savedArtistSlugs.length > 0
+      ? Vendor.find({ slug: { $in: savedArtistSlugs }, 'flags.isActive': true })
+          .select('-portfolio')
+          .lean<Record<string, any>[]>()
+      : Promise.resolve([] as Record<string, any>[]),
+    listCustomerBookings(userId),
+    SavedMoodboard.find({ user: userDoc._id as Types.ObjectId })
       .select('label styleDNA editorialAnalysis createdAt')
       .sort({ createdAt: -1 })
-      .lean<Array<Record<string, any>>>();
+      .lean<Array<Record<string, any>>>(),
+    listBoards(userId),
+  ]);
 
-    savedMoodboards = moodboardDocs.map((board) => ({
+  const [serializedVendors, facets] = await Promise.all([
+    serializeVendorsWithVerifiedRatings(vendors),
+    getVendorFacets(vendors.map((v) => v._id as Types.ObjectId)),
+  ]);
+  const vendorMap = new Map(serializedVendors.map((v) => [v.slug, v]));
+  const savedVendors: SavedVendorView[] = savedArtistSlugs
+    .map((slug) => vendorMap.get(slug))
+    .filter((v): v is NonNullable<typeof v> => v !== undefined)
+    .map((v) => ({
+      slug: v.slug,
+      name: v.name,
+      tagline: v.tagline,
+      profileImageUrl: v.profileImageUrl,
+      microLocation: v.location.microLocation,
+      fromPriceINR: facets.get(v._id)?.fromPriceINR ?? null,
+      averageRating: v.ratings.averageRating,
+      totalReviews: v.ratings.totalReviews,
+      badgeType: v.flags.badgeType,
+    }));
+
+  const requestedTab = searchParams?.tab;
+  const upcomingCount = bookings.filter((b) => b.phase === 'upcoming').length;
+  const initialTab: JourneyTab = TABS.includes(requestedTab as JourneyTab)
+    ? (requestedTab as JourneyTab)
+    : upcomingCount > 0 || savedVendors.length === 0
+    ? 'bookings'
+    : 'artists';
+
+  const data: JourneyData = {
+    user: {
+      name: userDoc.name ?? session.user.name ?? 'Your Account',
+      email: userDoc.email,
+      image: userDoc.image ?? session.user.image ?? '',
+    },
+    savedVendors,
+    savedMoodboards: moodboardDocs.map((board) => ({
       id: board._id.toString(),
       label: board.label,
       styleDNA: board.styleDNA ?? [],
       editorialAnalysis: board.editorialAnalysis ?? '',
       savedAt: new Date(board.createdAt).toISOString(),
-    }));
-  }
-
-  const data: JourneyData = {
-    user: {
-      name: session.user.name ?? 'Your Account',
-      email: session.user.email,
-      image: session.user.image ?? '',
-    },
-    savedVendors,
-    savedMoodboards,
+    })),
     bookings,
+    boards,
   };
 
-  return <JourneyClient data={data} />;
+  return <JourneyClient data={data} initialTab={initialTab} />;
 }

@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import type { ClientSession } from 'mongoose';
 import Vendor from '@/lib/db/models/Vendor';
 import Service from '@/lib/db/models/Service';
 import Booking from '@/lib/db/models/Booking';
@@ -8,15 +9,32 @@ import PortfolioImage, {
   PORTFOLIO_IMAGE_MIME_TYPES,
   MAX_PORTFOLIO_IMAGE_BYTES,
 } from '@/lib/db/models/PortfolioImage';
-import { parseTimeToMinutes } from '@/lib/db/utils/time';
+import { parseTimeToMinutes, businessTodayIso, isoDateToUtcMidnight } from '@/lib/db/utils/time';
+import { runTransaction, lockVendorSchedule, TransactionsUnavailableError } from '@/lib/db/transaction';
 
 export class VendorAdminError extends Error {
-  readonly statusCode: 400 | 404 | 409 | 422;
+  readonly statusCode: 400 | 404 | 409 | 422 | 503;
 
-  constructor(message: string, statusCode: 400 | 404 | 409 | 422 = 400) {
+  constructor(message: string, statusCode: 400 | 404 | 409 | 422 | 503 = 400) {
     super(message);
     this.name = 'VendorAdminError';
     this.statusCode = statusCode;
+  }
+}
+
+async function withVendorScheduleLock<T>(vendorId: Types.ObjectId, work: (session: ClientSession) => Promise<T>): Promise<T> {
+  try {
+    return await runTransaction(async (session) => {
+      if (!(await lockVendorSchedule(vendorId, session))) {
+        throw new VendorAdminError('Vendor not found.', 404);
+      }
+      return work(session);
+    });
+  } catch (err) {
+    if (err instanceof TransactionsUnavailableError) {
+      throw new VendorAdminError(err.message, 503);
+    }
+    throw err;
   }
 }
 
@@ -28,11 +46,6 @@ function assertObjectId(id: string, label = 'id'): Types.ObjectId {
     throw new VendorAdminError(`Invalid ${label}.`, 400);
   }
   return new Types.ObjectId(id);
-}
-
-function todayUTC(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
 function formatBookingLabel(b: { date: Date; startTime: string; endTime: string }): string {
@@ -650,14 +663,16 @@ export async function getAvailabilityForAdmin(vendorId: string): Promise<{
  */
 async function assertWorkingHoursFitExistingBookings(
   vendorId: Types.ObjectId,
-  workingHours: WorkingHoursInput[]
+  workingHours: WorkingHoursInput[],
+  session: ClientSession
 ): Promise<void> {
   const bookings = await Booking.find({
     vendor: vendorId,
     status: { $in: ['PENDING', 'CONFIRMED'] },
-    date: { $gte: todayUTC() },
+    date: { $gte: isoDateToUtcMidnight(businessTodayIso()) },
   })
     .select('date startTime endTime')
+    .session(session)
     .lean<Array<{ date: Date; startTime: string; endTime: string }>>();
 
   if (bookings.length === 0) return;
@@ -711,19 +726,21 @@ export async function updateWorkingHours(
     throw new VendorAdminError('Slot interval must be at least 5 minutes.');
   }
 
-  await assertWorkingHoursFitExistingBookings(_id, workingHours);
+  await withVendorScheduleLock(_id, async (session) => {
+    await assertWorkingHoursFitExistingBookings(_id, workingHours, session);
 
-  // maxConcurrentBookings is deliberately not settable here: the Phase 3 partial
-  // unique index on (vendor, service, date, startTime) only enforces capacity = 1,
-  // so exposing this field would silently make that guarantee wrong.
-  await VendorAvailability.findOneAndUpdate(
-    { vendor: _id },
-    {
-      $set: { workingHours, slotIntervalMinutes },
-      $setOnInsert: { vendor: _id, maxConcurrentBookings: 1 },
-    },
-    { upsert: true, runValidators: true, new: true }
-  );
+    // maxConcurrentBookings is deliberately not settable here: the Phase 3 partial
+    // unique index on (vendor, service, date, startTime) only enforces capacity = 1,
+    // so exposing this field would silently make that guarantee wrong.
+    await VendorAvailability.findOneAndUpdate(
+      { vendor: _id },
+      {
+        $set: { workingHours, slotIntervalMinutes },
+        $setOnInsert: { vendor: _id, maxConcurrentBookings: 1 },
+      },
+      { upsert: true, runValidators: true, new: true, session }
+    );
+  });
 }
 
 export async function addBlockedDate(
@@ -746,30 +763,38 @@ export async function addBlockedDate(
     throw new VendorAdminError('End date must be on or after start date.');
   }
 
-  // Same reasoning as the working-hours guard: don't silently strand a booking
-  // inside a newly blocked range.
-  const conflicting = await Booking.find({
-    vendor: _id,
-    status: { $in: ['PENDING', 'CONFIRMED'] },
-    date: { $gte: start, $lte: end },
-  })
-    .select('date startTime endTime')
-    .lean<Array<{ date: Date; startTime: string; endTime: string }>>();
+  return withVendorScheduleLock(_id, async (session) => {
+    // Same reasoning as the working-hours guard: don't silently strand a booking
+    // inside a newly blocked range.
+    const conflicting = await Booking.find({
+      vendor: _id,
+      status: { $in: ['PENDING', 'CONFIRMED'] },
+      date: { $gte: start, $lte: end },
+    })
+      .select('date startTime endTime')
+      .session(session)
+      .lean<Array<{ date: Date; startTime: string; endTime: string }>>();
 
-  if (conflicting.length > 0) {
-    throw new VendorAdminError(
-      `This range covers ${conflicting.length} existing booking(s): ${conflicting.slice(0, 5).map(formatBookingLabel).join(', ')}${conflicting.length > 5 ? ', …' : ''}. Cancel or reschedule them first.`,
-      409
+    if (conflicting.length > 0) {
+      throw new VendorAdminError(
+        `This range covers ${conflicting.length} existing booking(s): ${conflicting.slice(0, 5).map(formatBookingLabel).join(', ')}${conflicting.length > 5 ? ', …' : ''}. Cancel or reschedule them first.`,
+        409
+      );
+    }
+
+    const [doc] = await BlockedDate.create(
+      [
+        {
+          vendor: _id,
+          startDate: start,
+          endDate: end,
+          reason: reason?.trim() || undefined,
+        },
+      ],
+      { session }
     );
-  }
-
-  const doc = await BlockedDate.create({
-    vendor: _id,
-    startDate: start,
-    endDate: end,
-    reason: reason?.trim() || undefined,
+    return { id: (doc._id as Types.ObjectId).toString() };
   });
-  return { id: (doc._id as Types.ObjectId).toString() };
 }
 
 export async function deleteBlockedDate(vendorId: string, blockedDateId: string): Promise<void> {

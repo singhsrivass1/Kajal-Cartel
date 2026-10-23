@@ -9,15 +9,17 @@ import { ProfileTab } from './ProfileTab';
 import { PortfolioTab } from './PortfolioTab';
 import { ServicesTab } from './ServicesTab';
 import { AvailabilityTab } from './AvailabilityTab';
+import { ArtistAccountsTab } from './ArtistAccountsTab';
 import type { AvailabilityData } from './AvailabilityTab';
 
-type Tab = 'profile' | 'portfolio' | 'services' | 'availability';
+type Tab = 'profile' | 'portfolio' | 'services' | 'availability' | 'accounts';
 
 const TAB_LABELS: Record<Tab, string> = {
   profile: 'Profile',
   portfolio: 'Portfolio',
   services: 'Services',
   availability: 'Availability',
+  accounts: 'Artist Accounts',
 };
 
 export function VendorEditorClient({
@@ -147,6 +149,7 @@ export function VendorEditorClient({
         {tab === 'portfolio' && <PortfolioTab vendorId={vendorId} vendor={vendor} />}
         {tab === 'services' && <ServicesTab vendorId={vendorId} services={services} />}
         {tab === 'availability' && <AvailabilityTab vendorId={vendorId} availability={availability} />}
+        {tab === 'accounts' && <ArtistAccountsTab vendorId={vendorId} />}
       </main>
     </div>
   );

@@ -134,6 +134,7 @@ export interface IVendor extends Document {
   ratings: IRatings;
   serviceSummary: IServiceSummary;
   flags: IVendorFlags;
+  bookingLockVersion?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -663,6 +664,11 @@ const VendorSchema = new Schema<IVendor>(
         isFeatured: false,
         badgeType: null,
       }),
+    },
+    bookingLockVersion: {
+      type: Number,
+      default: 0,
+      select: false,
     },
   },
   {

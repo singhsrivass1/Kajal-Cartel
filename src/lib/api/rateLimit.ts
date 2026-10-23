@@ -169,4 +169,14 @@ export const RATE_LIMITS = {
 
   /** Low-cost session-scoped writes (save an artist, delete a saved look). */
   generalWrite: { limit: 60, windowMs: HOUR },
+
+  bookingChange: { limit: 20, windowMs: HOUR },
+
+  review: { limit: 10, windowMs: HOUR },
+
+  profile: { limit: 30, windowMs: HOUR },
+
+  boardUpload: { limit: 30, windowMs: HOUR },
+
+  availabilitySearch: { limit: 120, windowMs: HOUR },
 } as const satisfies Record<string, RateLimitRule>;

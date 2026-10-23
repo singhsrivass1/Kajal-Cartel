@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import { notFound, redirect } from 'next/navigation';
-import { getAdminSession } from '@/lib/auth/admin';
+import { notFound } from 'next/navigation';
+import { requireAdminPage } from '@/lib/auth/pageGuards';
 import { dbConnect } from '@/lib/db/connect';
 import {
   getVendorForAdmin,
@@ -18,8 +18,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminVendorEditPage({ params }: { params: { id: string } }) {
-  const session = await getAdminSession();
-  if (!session) redirect('/auth?callbackUrl=/admin');
+  const session = await requireAdminPage(`/admin/vendors/${params.id}`);
 
   await dbConnect();
 

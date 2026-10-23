@@ -41,6 +41,12 @@ export async function withAdmin<T>(
     if (err instanceof VendorAdminError) {
       return NextResponse.json({ error: err.message }, { status: err.statusCode });
     }
+    if (err instanceof Error && (err.name === 'ReviewError' || err.name === 'BookingValidationError')) {
+      const status = (err as { statusCode?: unknown }).statusCode;
+      if (typeof status === 'number' && status >= 400 && status < 600) {
+        return NextResponse.json({ error: err.message }, { status });
+      }
+    }
     console.error(`[${logLabel}] Unhandled error:`, err);
     return NextResponse.json({ error: 'An unexpected error occurred.' }, { status: 500 });
   }

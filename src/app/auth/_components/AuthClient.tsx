@@ -192,20 +192,20 @@ export function AuthClient() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#080808', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-      <div style={{ position: 'relative', overflow: 'hidden' }}>
+    <div className="grid grid-cols-1 md:grid-cols-2" style={{ minHeight: '100vh', background: '#080808' }}>
+      <div className="hidden md:block" style={{ position: 'relative', overflow: 'hidden' }}>
         <img src="/images/hero-02.png" alt="" aria-hidden style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: 0.5 }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, transparent 50%, #080808 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, #080808 0%, transparent 40%)' }} />
         <div style={{ position: 'absolute', bottom: '60px', left: '52px', right: '52px' }}>
           <p style={{ fontFamily: FONT_DISPLAY, fontSize: '1.15rem', fontStyle: 'italic', color: 'rgba(240,235,224,0.55)', lineHeight: 1.7, maxWidth: '300px', marginBottom: '14px' }}>
-            "I found my artist in under five minutes. She understood exactly what I wanted."
+            Save the artists and looks you love, and manage every booking request in one place.
           </p>
-          <p style={{ fontSize: '11px', color: 'rgba(240,235,224,0.3)' }}>Priya M. · Married November 2024 · Booked Studio Noor</p>
+          <p style={{ fontSize: '11px', color: 'rgba(240,235,224,0.3)' }}>Kajal Cartel · New Delhi</p>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 52px' }}>
+      <div className="px-5 py-14 md:px-[52px] md:py-[60px]" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ width: '100%', maxWidth: '340px' }}>
           <Link href="/" style={{ display: 'block', fontFamily: FONT_DISPLAY, fontSize: '16px', letterSpacing: '0.14em', color: '#F0EBE0', textDecoration: 'none', marginBottom: '60px' }}>
             KAJAL CARTEL

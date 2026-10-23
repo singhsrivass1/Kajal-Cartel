@@ -95,7 +95,51 @@ function formatINR(n: number): string {
   }).format(n);
 }
 
-function buildEmailHTML(params: {
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildEmailHTML(raw: {
+  ref: string;
+  vendorName: string;
+  anchorServiceName: string;
+  lineItems: EstimateLineItem[];
+  total: number;
+  depositAmount: number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  customerNotes?: string;
+}): string {
+  return buildEscapedEmailHTML({
+    ...raw,
+    ref: escapeHtml(raw.ref),
+    vendorName: escapeHtml(raw.vendorName),
+    anchorServiceName: escapeHtml(raw.anchorServiceName),
+    lineItems: raw.lineItems.map((item) => ({
+      ...item,
+      name: escapeHtml(item.name),
+      discountLabel: item.discountLabel ? escapeHtml(item.discountLabel) : undefined,
+    })),
+    date: escapeHtml(raw.date),
+    startTime: escapeHtml(raw.startTime),
+    endTime: escapeHtml(raw.endTime),
+    contactName: escapeHtml(raw.contactName),
+    contactEmail: escapeHtml(raw.contactEmail),
+    contactPhone: escapeHtml(raw.contactPhone),
+    customerNotes: raw.customerNotes ? escapeHtml(raw.customerNotes) : undefined,
+  });
+}
+
+function buildEscapedEmailHTML(params: {
   ref: string;
   vendorName: string;
   anchorServiceName: string;

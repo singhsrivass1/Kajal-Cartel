@@ -1,6 +1,8 @@
-import type { ClientVendor } from '@/types/match';
+import type { ClientVendor, ClientVendorRatings } from '@/types/match';
 
-export function serializeClientVendor(v: Record<string, any>): ClientVendor {
+const NO_VERIFIED_RATINGS: ClientVendorRatings = { averageRating: 0, totalReviews: 0 };
+
+export function serializeClientVendor(v: Record<string, any>, ratings: ClientVendorRatings = NO_VERIFIED_RATINGS): ClientVendor {
   return {
     _id: v._id.toString(),
     name: v.name,
@@ -16,10 +18,7 @@ export function serializeClientVendor(v: Record<string, any>): ClientVendor {
       tier: v.pricing?.tier ?? 'premium',
       startingFromINR: v.pricing?.startingFromINR ?? 0,
     },
-    ratings: {
-      averageRating: v.ratings?.averageRating ?? 0,
-      totalReviews: v.ratings?.totalReviews ?? 0,
-    },
+    ratings: { averageRating: ratings.averageRating, totalReviews: ratings.totalReviews },
     flags: {
       badgeType: v.flags?.badgeType ?? null,
       isVerified: v.flags?.isVerified ?? false,

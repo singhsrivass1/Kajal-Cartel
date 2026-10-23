@@ -14,7 +14,10 @@
     "seed:availability": "tsx src/lib/db/seedAvailability.ts",
     "verify:phase53": "tsx scripts/testPhase53.ts",
     "verify:ratelimit": "tsx scripts/testRateLimit.ts",
-    "check:availability": "tsx scripts/checkAvailability.ts"
+    "check:availability": "tsx scripts/checkAvailability.ts",
+    "test:booking": "tsx scripts/testBookingIntegrity.ts",
+    "test:features": "tsx scripts/testSprintFeatures.ts",
+    "test:http": "tsx scripts/testSprintHttp.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -70,12 +70,21 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     signIn: verifyOAuthSignIn,
 
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger }) {
       if (user) {
         token.id = user.id;
       }
       if (account) {
         token.authProvider = account.provider;
+      }
+      if (trigger === 'update' && typeof token.id === 'string' && /^[a-f0-9]{24}$/i.test(token.id)) {
+        try {
+          await dbConnect();
+          const fresh = await User.findById(token.id).select('name').lean<{ name?: string }>();
+          if (fresh?.name) token.name = fresh.name;
+        } catch (err) {
+          console.error('[NextAuth] Session refresh failed:', err instanceof Error ? err.name : 'unknown error');
+        }
       }
       return token;
     },
