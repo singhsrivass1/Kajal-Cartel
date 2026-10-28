@@ -1,154 +1,411 @@
-# Kajal Cartel
+# Kajal Cartel — AI-Powered Bridal Beauty Marketplace
 
-## Live Production Environment
+**Discover the right makeup artist for your vision.**
 
-Access the live application deployment: [kajal-cartel.vercel.app](https://kajal-cartel.vercel.app/)
+[![Live Application](https://img.shields.io/badge/Live-kajal--cartel.vercel.app-black?style=for-the-badge)](https://kajal-cartel.vercel.app/)
+[![Framework](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)](https://nextjs.org/)
+[![Language](https://img.shields.io/badge/TypeScript-Strict-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Database](https://img.shields.io/badge/Database-MongoDB-green?style=flat-square&logo=mongodb)](https://www.mongodb.com/)
+
+Kajal Cartel is a bridal beauty marketplace designed to help customers discover makeup artists based on their aesthetic preferences, compare service pricing, manage bookings, and organize their bridal inspiration. It combines image-assisted AI matching with a structured booking platform and role-based experiences for customers, artists, and administrators.
+
+**Live application:** https://kajal-cartel.vercel.app/  
+**Source code:** https://github.com/singhsrivass1/Kajal-Cartel
 
 ---
 
-## 1. Project Overview
+## Table of Contents
 
-Finding the right makeup artist for a wedding is a fragmented, inefficient process. Brides spend weeks manually filtering through social media, guessing if an artist has the technical skill to recreate a specific vision. Artists, on the other hand, waste hours managing inquiries from leads that do not align with their specialized aesthetic.
+- [1. The Problem](#1-the-problem)
+- [2. The Solution](#2-the-solution)
+- [3. Core Features](#3-core-features)
+- [4. System Architecture](#4-system-architecture)
+- [5. Key Workflows](#5-key-workflows)
+- [6. Technology Stack](#6-technology-stack)
+- [7. Security and Data Integrity](#7-security-and-data-integrity)
+- [8. Project Structure](#8-project-structure)
+- [9. Local Development](#9-local-development)
+- [10. Environment Configuration](#10-environment-configuration)
+- [11. Testing and Verification](#11-testing-and-verification)
+- [12. Deployment Considerations](#12-deployment-considerations)
+- [13. Limitations and Future Improvements](#13-limitations-and-future-improvements)
 
-Kajal Cartel is a systemic solution to this market inefficiency. Built as a high-complexity, infrastructure-grade platform, it replaces manual searching with an agentic AI matchmaking engine. By analyzing the core techniques in a reference image, the platform instantly pairs the demand side (brides) with the supply side (artists) based on verifiable aesthetic alignment, transparent pricing, and secure booking flows.
+## 1. The Problem
 
----
+Finding a suitable bridal makeup artist often involves browsing social media, manually comparing portfolios, requesting quotations, and trying to determine whether an artist can reproduce a particular look.
 
-## 2. System Architecture & Data Flow Workflow
+This creates friction for both sides of the marketplace:
 
-The platform operates on a tightly integrated stack, moving data securely between the client interface, the server-side logic, the artificial intelligence engine, and the database.
+- **Customers** struggle to translate visual inspiration into useful search criteria and compare artists consistently.
+- **Artists** spend time responding to inquiries that may not match their style, availability, or service offerings.
+- **Booking coordination** becomes difficult when availability, event requirements, pricing, and customer details are managed through separate conversations.
 
-### High-Level Architecture Diagram
+## 2. The Solution
+
+Kajal Cartel brings artist discovery, AI-assisted visual matching, service pricing, booking management, reviews, and bridal planning into one platform.
+
+Its goal is to make the discovery process more visual and the booking process more structured.
+
+The application is built around three primary user groups:
+
+| User | Primary capabilities |
+|---|---|
+| Customer | Discover artists, explore services, manage bookings, save artists, write eligible reviews, and organize moodboards |
+| Artist | Access the artist portal and view permitted booking-related information |
+| Administrator | Manage platform operations, review bookings, moderate reviews, and access administrative views |
+
+The exact permissions and available actions depend on the account's server-verified role.
+
+## 3. Core Features
+
+### 3.1 AI-Assisted Artist Matching
+
+Customers can use a visual reference to discover artists whose work may align with the intended look.
+
+The AI integration uses the Google Gemini API. Image validation, model-output handling, artist verification, and fallback behavior are important parts of the matching workflow.
+
+AI recommendations are decision-support results, not guarantees that an artist can reproduce a look exactly.
+
+### 3.2 Artist Discovery and Service Catalog
+
+- Browse artist profiles and portfolios.
+- Explore service listings and individual service details.
+- Review available pricing information and service options.
+- Use discovery filters and compare relevant artists.
+- Access dedicated policy and help pages.
+
+### 3.3 Pricing Estimates
+
+The platform supports server-side price estimation based on configured artist pricing, event requirements, group quantities, and eligible add-ons.
+
+The calculation can account for minimum charges, tiered group discounts, and a deposit estimate where configured.
+
+**Important:** A price estimate is not a completed payment or a guarantee of the final amount. Kajal Cartel does not implement payment processing merely by calculating a deposit.
+
+### 3.4 Customer Accounts and Journey Dashboard
+
+Authenticated customers can access account-related features, including:
+
+- Profile information.
+- Booking history and booking details.
+- Permitted cancellation and rescheduling actions.
+- Saved artists.
+- Personal bridal-planning moodboards.
+
+Access to customer-specific records must be restricted to their owner.
+
+### 3.5 Booking Management
+
+Booking operations include server-side validation of requests, scheduling constraints, booking-state rules, and conflict prevention.
+
+The intended outcome is to prevent overlapping appointments and inconsistent updates when multiple requests affect the same artist's schedule.
+
+Cancellation and rescheduling are governed by configured booking policies rather than unrestricted client-side actions.
+
+### 3.6 Reviews and Moderation
+
+The review workflow is designed to associate reviews with eligible completed bookings. It includes restrictions against duplicate reviews for the same booking, author-controlled changes, and administrative moderation.
+
+Only published reviews should contribute to publicly displayed review summaries.
+
+### 3.7 Bridal Moodboards
+
+Customers can organize bridal inspiration into planning boards containing relevant event information, preferences, references, and related artist or service selections.
+
+Private board data and uploaded images require ownership checks so that one customer cannot access another customer's private planning materials.
+
+### 3.8 Administrative and Artist Portals
+
+The administrative interface supports operational views such as booking management, customer information, review moderation, and platform statistics.
+
+The artist portal provides a separate, restricted experience. Artist permissions must not be inferred from a client-supplied role or from access to a frontend page alone.
+
+## 4. System Architecture
+
+### High-level architecture
 
 ```mermaid
-graph TD;
-    Client[Client Interface / Next.js Frontend] -->|1. Upload Image| Server[Next.js Server API Route];
-    Client -->|4. Request Booking| Server;
-    
-    Server -->|2a. Send Image Data| AI[Google Gemini API Engine];
-    AI -->|2b. Return Aesthetic Analysis JSON| Server;
-    
-    Server -->|3a. Query Matching Profiles| DB[(MongoDB Database)];
-    DB -->|3b. Return Artist Data| Server;
-    
-    Server -->|3c. Send Matched Profiles & AI Justification| Client;
-    
-    Server -->|5a. Trigger Email Payload| Email[Resend API];
-    Email -->|5b. Deliver Booking Request| ArtistInbox[Artist Inbox];
-
+flowchart TD
+    U[Customer / Artist / Admin] --> UI[Next.js App Router UI]
+    UI --> AUTH[NextAuth Authentication]
+    UI --> API[Next.js Server Routes]
+    AUTH --> API
+    API --> VALIDATE[Validation and Authorization]
+    VALIDATE --> DB[(MongoDB)]
+    VALIDATE --> AI[Google Gemini API]
+    VALIDATE --> EMAIL[Resend Email API]
+    DB --> API
+    AI --> API
+    EMAIL --> API
+    API --> UI
 ```
 
-### Step-by-Step Workflow Execution
+The Next.js application handles the user interface and server-side application logic. Server routes validate requests, verify authorization, and interact with MongoDB or external services when required.
 
-1. **Input Phase:** The user uploads a target image to the client interface. The image is converted into a secure payload and sent to the server.
-2. **Analysis Phase:** The server forwards the payload to the Gemini API. The AI acts as a domain expert, analyzing the image for specific variables: skin finish (matte vs. dewy), eye styling (smoky vs. graphic), and color palettes.
-3. **Query Phase:** The AI returns a structured JSON object defining these traits. The server uses this data to query the MongoDB database for artists whose tagged specialties match the AI's output.
-4. **Justification Phase:** The server synthesizes the database results with the AI's reasoning, sending a unified response back to the client. The user sees not just who matches, but specifically why they match.
-5. **Transactional Phase:** When a user initiates a booking, the server verifies their NextAuth session and triggers the Resend API to deliver a formatted email directly to the selected artist.
+### Main architectural components
 
----
+| Component | Responsibility |
+|---|---|
+| Next.js App Router | Page routing, server-rendered UI, and application organization |
+| TypeScript | Static typing across application code |
+| NextAuth.js | Authentication and session handling |
+| MongoDB | Persistent application data |
+| Mongoose | Database schemas, models, and query operations |
+| Gemini API | AI-assisted image analysis and artist matching |
+| Resend | Email delivery where configured and invoked |
+| Tailwind CSS | Utility-based styling |
+| Framer Motion | Interface animation |
+| Vercel | Application hosting and deployment |
 
-## 3. Core Use Cases
+### Booking workflow
 
-### Demand Side (The Client/Bride)
+```mermaid
+flowchart TD
+    A[Customer submits booking request] --> B[Verify session and ownership]
+    B --> C[Validate artist, service, date and requirements]
+    C --> D[Acquire scheduling protection]
+    D --> E[Check availability and booking conflicts]
+    E --> F{Schedule available?}
+    F -- No --> G[Return conflict or validation error]
+    F -- Yes --> H[Apply booking changes transactionally]
+    H --> I[Persist booking state]
+    I --> J[Return result to customer]
+    J --> K[Trigger any configured follow-up workflow]
+```
 
-* **Visual Discovery:** A user does not need to know industry terminology. They simply upload a photo, and the system translates the visual data into technical search parameters.
-* **Cost Transparency:** A user can input their exact event requirements (e.g., one bridal session, two guest sessions) into the dynamic calculator on an artist's profile to instantly generate a baseline cost without waiting for a manual quote.
-* **Stateful Journey Tracking:** A user logs in via Google OAuth. As they discover matching artists, they can save these profiles to a persistent personal dashboard for future review.
+The diagram describes the logical workflow. Exact transaction boundaries, persistence operations, and follow-up behavior must be confirmed against the current source code.
 
-### Supply Side (The Service Provider/Artist)
+### AI matching workflow
 
-* **Qualified Lead Generation:** Artists only receive booking requests from users who have been algorithmically matched to their specific style of work, ensuring a higher conversion rate.
-* **Automated Intake:** Booking requests arrive in the artist's inbox with the client's contact information, event details, and the specific visual reference image that triggered the match.
+```mermaid
+flowchart TD
+    A[Customer selects reference image] --> B[Validate image type and size]
+    B --> C[Send supported image input to Gemini]
+    C --> D[Parse and validate model output]
+    D --> E[Verify returned artist IDs against database]
+    E --> F[Build matching response]
+    F --> G[Display relevant artist recommendations]
+    C -. Failure .-> H[Fallback or controlled error]
+    D -. Invalid output .-> H
+    E -. Invalid artist references .-> H
+```
 
----
+AI-generated data should be treated as untrusted input. Database-backed artist records and server-side validation remain authoritative.
 
-## 4. Deep Detailed Feature Breakdown
+## 5. Key Workflows
 
-### Agentic AI Matching Engine
+### Customer booking lifecycle
 
-The core of the application relies on the Google Gemini API. Instead of relying on user-selected text filters, the AI performs a deep visual synthesis. It reads the lighting, texture, and application methods in the uploaded photo. It then generates a comparative analysis against the known data points of artists in the database, producing a natural-language justification that builds user trust before a booking is ever made.
+1. The customer signs in and selects an artist or service.
+2. The application validates the customer's identity and booking request.
+3. The server checks the relevant artist, service, schedule, and booking constraints.
+4. Scheduling protection and database consistency mechanisms prevent conflicting operations.
+5. The booking is persisted if the applicable checks succeed.
+6. The customer can view the booking and use only the actions permitted by its current state and booking policy.
 
-### Dynamic Pricing Calculator
+### Authentication and authorization
 
-Opaque pricing is a primary failure point in service marketplaces. Kajal Cartel solves this by attaching base cost variables to each artist's database schema. The frontend component reads these variables and multiplies them against the user's real-time input (number of events, number of people) to output an immediate, reliable financial estimate.
+1. The user authenticates through the configured authentication provider.
+2. The application establishes a session.
+3. Server-side code resolves the user's trusted identity and role.
+4. Each protected API checks authentication, permissions, and record ownership as appropriate.
+5. Unauthorized requests are rejected without exposing private data.
 
-### Secure Ecosystem Retention
+Authentication establishes who the user is. Authorization determines what that user is allowed to do.
 
-The platform utilizes NextAuth for credential management. By wrapping the application in a session provider, user actions (like saving an artist or requesting a booking) are securely tied to a unique database identifier. This prevents data loss across sessions and keeps the user securely anchored within the platform's ecosystem.
+### Pricing estimation
 
----
+1. The customer selects the required services or event quantities.
+2. The server validates identifiers, quantities, and applicable add-ons.
+3. Pricing rules are applied using configured data.
+4. The server returns the calculated estimate.
+5. The result is presented as an estimate, not a payment confirmation.
 
-## 5. Technology Stack
+## 6. Technology Stack
 
-This application bypasses traditional manual development constraints by utilizing modern, infrastructure-grade tools.
+| Technology | Use |
+|---|---|
+| Next.js 14 | Full-stack application framework |
+| TypeScript | Application language and type safety |
+| React | Component-based user interface |
+| MongoDB | Document database |
+| Mongoose | Object-document mapping and schema validation |
+| NextAuth.js | Authentication and session management |
+| Google Gemini API | Image-assisted AI matching |
+| Resend | Email delivery integration |
+| Tailwind CSS | Styling |
+| Framer Motion | Animations |
+| Vercel | Hosting and deployment |
+| Node.js | Server-side JavaScript runtime |
 
-* **Application Framework:** Next.js 14 (App Router architecture for server-side rendering and optimized routing).
-* **Language Environment:** TypeScript (Ensuring strict type safety across the entire codebase).
-* **Agentic AI:** Google Gemini API (Strictly utilized for complex image analysis and reasoning tasks).
-* **Database Layer:** MongoDB with Mongoose ODM (Document-based storage for flexible artist schemas and user relations).
-* **Authentication Provider:** NextAuth.js (Configured with Google OAuth and JSON Web Token session strategies).
-* **Transactional Communications:** Resend API (For reliable, low-latency email delivery).
-* **Interface Rendering:** Tailwind CSS (Utility-first styling) and Framer Motion (Complex state animations).
-* **Deployment Infrastructure:** Vercel (Edge network hosting and continuous integration).
+The exact package versions and active integrations should be verified in `package.json` and the current application configuration.
 
----
+## 7. Security and Data Integrity
 
-## 6. Local Development Setup Instructions
+Security is enforced primarily on the server, not through frontend visibility alone.
 
-To deploy and modify this system in a local environment, execute the following steps strictly in order.
+Key areas include:
 
-### System Prerequisites
+- **Authentication:** Validate the session before performing protected operations.
+- **Role-based authorization:** Check the authenticated user's role on administrative and artist-specific routes.
+- **Ownership checks:** Restrict customer records, bookings, and private moodboards to authorized users.
+- **Input validation:** Validate identifiers, quantities, image inputs, and booking fields.
+- **Redirect validation:** Prevent unsafe callback destinations.
+- **AI output validation:** Verify generated data and artist references before using them.
+- **Booking consistency:** Use appropriate database transactions, scheduling protection, and conflict checks.
+- **Privacy:** Avoid exposing unnecessary personal information in administrative or artist-facing responses.
+- **Configuration security:** Keep credentials in environment variables and never commit secrets.
 
-* Node.js installed (Version 18.x or higher recommended).
-* A registered Google Cloud Console project (for OAuth credentials).
-* A Google AI Studio account (for the Gemini API key).
-* A MongoDB Atlas cluster or a local MongoDB instance.
-* A Resend account with a verified sending domain.
+### Booking concurrency
 
-### Installation Process
+Two customers may attempt to reserve the same artist and time simultaneously. A simple availability check is insufficient because both requests could observe the same initially available slot.
 
-1. **Clone the Repository:** Download the source code to your local machine and navigate into the root directory via your terminal.
-2. **Install Dependencies:** Execute the package manager. Note: The `--legacy-peer-deps` flag is required to bypass known strict dependency conflicts between the current version of NextAuth and MongoDB version 6 adapters.
+The booking implementation must coordinate conflicting requests and revalidate availability before committing changes. MongoDB transactions require a deployment that supports transactions, such as a replica set or supported sharded cluster. Scheduling locks and database transactions address related but distinct concerns.
+
+## 8. Project Structure
+
+The repository should be consulted for the authoritative current structure. Important areas include:
+
+```text
+src/
+├── app/              # Pages, layouts and API routes
+├── components/       # Reusable UI components
+├── lib/              # Shared logic, database and integrations
+└── ...               # Additional application modules
+
+docs/                 # Project and operational documentation
+scripts/              # Development, verification and test scripts
+public/               # Static assets
+```
+
+Use the actual directory names and paths from the repository when documenting specific modules. Do not assume every illustrative folder above exists.
+
+## 9. Local Development
+
+### Prerequisites
+
+- Node.js version compatible with the repository's declared engine.
+- npm.
+- MongoDB deployment or local instance suitable for the application's database operations.
+- Google OAuth credentials.
+- Gemini API credentials for AI functionality.
+- Resend credentials if email delivery is enabled.
+
+### Installation
+
+Clone the repository and enter the project directory:
 
 ```bash
-npm install --legacy-peer-deps
-
+git clone https://github.com/singhsrivass1/Kajal-Cartel.git
+cd Kajal-Cartel
 ```
 
-3. **Configure Environment Variables:** Create a file named `.env.local` in the root directory. This file must contain the secure routing keys for the infrastructure to function. Do not commit this file to version control.
-
-```env
-# AI & Database Infrastructure
-GEMINI_API_KEY=your_google_ai_key_here
-MONGODB_URI=your_mongodb_connection_string
-
-# Authentication Security (NextAuth)
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=generate_a_random_32_character_string
-
-# Google OAuth Provider Credentials
-GOOGLE_CLIENT_ID=your_google_cloud_client_id
-GOOGLE_CLIENT_SECRET=your_google_cloud_client_secret
-
-# Email Infrastructure
-RESEND_API_KEY=your_resend_api_key
-ADMIN_EMAIL=your_verified_resend_email_address
-
-```
-
-4. **Initialize Database State:** Populate your blank database with the baseline artist profiles required for the matching algorithm to function.
+Install the dependencies using the package manager and instructions supported by the current lockfile:
 
 ```bash
-npx tsx src/lib/db/seed.ts
-
+npm install
 ```
 
-5. **Launch the Application:** Boot the local development server.
+If the repository's documented dependency compatibility requires a legacy peer-dependency installation, use that option only after confirming it is still necessary.
+
+### Environment configuration
+
+Create a local `.env.local` file in the project root. Use the variable names required by the current source code and `docs/configuration.md`.
+
+Do not commit `.env.local`, production credentials, or real connection strings.
+
+### Database setup
+
+Configure the correct database URI before running any seed or data-modification script.
+
+If the repository contains a seed script, inspect its behavior before executing it. Run it only against an explicitly selected development database; never assume a script is safe for production.
+
+### Start the development server
 
 ```bash
 npm run dev
-
 ```
 
-6. **Verify Deployment:** Open a web browser and navigate to `http://localhost:3000` to confirm the system is operational.
+Open:
+
+```text
+http://localhost:3000
+```
+
+Check the repository's `package.json` for the available build, type-check, and test scripts.
+
+## 10. Environment Configuration
+
+The following are representative configuration variables. Verify the current code and documentation before assuming every variable is mandatory.
+
+| Variable | Purpose |
+|---|---|
+| `MONGODB_URI` | MongoDB connection string |
+| `NEXTAUTH_SECRET` | Secret used by authentication/session configuration |
+| `GOOGLE_CLIENT_ID` | Google OAuth client identifier |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `GEMINI_API_KEY` | Gemini API access |
+| `RESEND_API_KEY` | Resend email integration |
+| `ADMIN_EMAIL` | Configured administrator email, where supported |
+| `EMAIL_FROM` | Sender identity for email delivery, where supported |
+| `EMAIL_DELIVERY_VERIFIED` | Email-delivery configuration flag, where supported |
+| `NEXTAUTH_URL` | Canonical authentication URL when explicitly required |
+| `NEXT_PUBLIC_SITE_URL` | Public site URL for supported metadata or URL generation |
+
+Use separate credentials and database instances for development, preview, and production wherever practical. Do not paste actual secret values into documentation or terminal output.
+
+## 11. Testing and Verification
+
+Before a release, verify the following:
+
+- TypeScript checks and production build pass.
+- Authentication and role-based authorization work as intended.
+- Customers cannot access another customer's private records.
+- Booking conflicts are rejected under concurrent requests.
+- Cancellation and rescheduling obey booking-state and timing rules.
+- Pricing rejects invalid identifiers, quantities, and ineligible add-ons.
+- AI output validation handles malformed responses and invalid artist references.
+- Reviews follow eligibility and moderation rules.
+- Private moodboard resources enforce ownership checks.
+- Mobile layouts and important navigation flows work.
+- Preview and production environments use the intended configuration.
+
+Document actual test commands, test counts, and outcomes only after verifying them. A passing automated test suite does not replace end-to-end testing against the intended deployment environment.
+
+## 12. Deployment Considerations
+
+Kajal Cartel is hosted on Vercel.
+
+Before promoting a deployment:
+
+1. Confirm that the intended commit and build are being deployed.
+2. Verify environment variables for the target Vercel environment.
+3. Confirm the MongoDB deployment supports required transactions and indexes.
+4. Ensure Preview uses an isolated database rather than production data.
+5. Verify Google OAuth redirect URIs for the relevant deployment domain.
+6. Test sign-in, booking, cancellation, rescheduling, and role-based access.
+7. Review logs and errors, then verify the canonical production URL.
+
+A successful build alone does not establish that database connectivity, OAuth, email delivery, or booking concurrency works correctly in production.
+
+## 13. Limitations and Future Improvements
+
+Potential improvements should be prioritized according to the actual deployed state:
+
+- Add end-to-end browser tests for critical customer and administrator journeys.
+- Improve operational monitoring, structured logs, and error reporting.
+- Add background processing for operations that do not need to block user requests.
+- Measure AI matching quality with representative reference images and human-reviewed outcomes.
+- Improve accessibility and performance based on real testing.
+- Add payment processing only through a dedicated, secure payment integration.
+- Expand automated checks for booking concurrency, retries, and recovery behavior.
+
+These are possible future improvements, not claims that the features are already implemented.
+
+---
+
+## Project Status
+
+Kajal Cartel is available at [kajal-cartel.vercel.app](https://kajal-cartel.vercel.app/).
+
+For implementation details, setup instructions, available scripts, and current operational requirements, refer to the repository's source code and documentation. Feature availability and production behavior should be verified against the live deployment.
